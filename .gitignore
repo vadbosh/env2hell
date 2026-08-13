@@ -23,6 +23,11 @@ AGENTS.md
 .memsearch/
 .opencode/
 
+# Work notes about this repository — traps met while editing it, and the state
+# of the work outside git. Written for whoever maintains a checkout, machine by
+# machine, and not part of what the tool ships.
+kb/
+
 # Python bytecode.
 __pycache__/
 *.pyc
