@@ -4,7 +4,8 @@
 
 A hook sees one thing: the command string, before it runs. It has to answer a
 single question — would running this print a credential? — and it has to answer
-it without a shell parser, fast enough to sit in front of every command.
+it without a shell parser. And answer it quickly: it runs before every command,
+so whatever it takes is added to every command the assistant issues.
 
 Two obvious approaches both fail:
 
