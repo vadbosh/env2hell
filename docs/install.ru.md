@@ -136,8 +136,8 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 `echo hi` и ждёт кодов 2 и 0. Дальше можно проверить подробнее:
 
 ```bash
-./tests/test_guard.sh                       # 33 случая, версия для POSIX
-./tests/test_guard.sh --pwsh                # те же 33, версия для PowerShell
+./tests/test_guard.sh                       # 36 случаев, версия для POSIX
+./tests/test_guard.sh --pwsh                # те же 36, версия для PowerShell
 ./tests/test_guard.sh --guard ~/.local/bin/secrets-guard   # установленная копия
 ```
 

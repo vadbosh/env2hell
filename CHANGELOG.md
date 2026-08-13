@@ -23,7 +23,7 @@ feature list.
   delegates to the same guard binary.
 - `rules/secrets-hygiene.md` — installed into each assistant so the model knows
   what to use instead of the blocked command.
-- `tests/test_guard.sh` — 33 cases, runnable against either port.
+- `tests/test_guard.sh` — 36 cases, runnable against either port.
 
 ### Fixed during development
 
@@ -42,6 +42,11 @@ not have:
   dot broke every run. Added as its own pattern.
 - **GitLab tokens were masked only by accident.** `glpat-` was absent from the
   list; a long suffix happened to trigger a generic rule. Now explicit.
+- **Prose was read as a command.** A commit message mentioning `cat .env` was
+  denied, because pass B looked for the reading command in the raw text, where
+  words inside a quoted argument are indistinguishable from a command. The
+  reader is now looked for in the quote-stripped text, and only the path in the
+  raw one.
 
 ### Known limits
 

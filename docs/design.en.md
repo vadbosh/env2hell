@@ -59,14 +59,31 @@ A fragment that does not look like a command name at all — one starting with
 
 ## Pass B — files that hold credentials
 
-The path is usually quoted, so pass A's stripping would erase exactly what
-matters. Pass B therefore scans the **raw** string, and requires two things at
-once: a reading command (`cat`, `head`, `tail`, `less`, `strings`, …) and a
-path that looks like a secret store (`.env`, `~/.bashrc`, `*.pem`, `id_rsa`,
-`/proc/N/environ`, `.aws/credentials`, `.kube/config`).
+Pass B requires two things at once: a reading command (`cat`, `head`, `tail`,
+`less`, `strings`, …) and a path that looks like a secret store (`.env`,
+`~/.bashrc`, `*.pem`, `id_rsa`, `/proc/N/environ`, `.aws/credentials`,
+`.kube/config`).
+
+The two are looked for in different versions of the string, and the split is
+the whole trick:
+
+- **the reader, in the quote-stripped text** — it has to be a real command
+- **the path, in the raw text** — it is often quoted, and pass A would have
+  erased it
 
 Requiring both keeps the false-positive rate low: `cat README.md` mentions no
 secret path, and `ls ~/.aws/credentials` reads nothing.
+
+Looking for the reader in the stripped text is what keeps prose out of the
+decision. This commit message —
+
+```bash
+git commit -m "docs: cat .env ends the same way"
+```
+
+— contains a reader and a secret path, and an earlier version denied it. The
+words are an argument, not a command; stripping the quotes removes them before
+the reader is ever found.
 
 The `.env` pattern needs a boundary on its left, or it fires on ordinary text.
 A real example from this repository's own development:

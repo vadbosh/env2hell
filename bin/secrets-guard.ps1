@@ -100,11 +100,15 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\|')) {
     }
 }
 
-# ---------- pass B: secret-file reads, on raw text ----------
+# ---------- pass B: secret-file reads ----------
+# The reader has to be a real command, so it is looked for in the quote-stripped
+# text; the path may legitimately be quoted, so it is looked for in the raw one.
+# That split keeps prose out of the decision: a commit message containing the
+# words `cat .env` is an argument, not a command.
 $readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|strings|type|gc|get-content)([\s]|$)'
 $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)|[/\\]\.(bashrc|zshrc|profile|bash_profile|zshenv|zprofile|netrc)|id_rsa|id_ed25519|\.pem([\s"'']|$)|\.p12([\s"'']|$)|\.pfx([\s"'']|$)|/proc/[0-9]+/environ|\.aws[/\\]credentials|\.docker[/\\]config\.json|\.kube[/\\]config)'
 
-if ($command -match $readers -and $command -match $secrets) {
+if ($scan -match $readers -and $command -match $secrets) {
     Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
 }
 

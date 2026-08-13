@@ -13,17 +13,22 @@ Works with Claude Code, Opencode and Codex, on Linux, macOS and Windows.
 
 ## Why
 
-An assistant asked to check which model it is running writes something like:
+An app fails with an authorisation error. The developer asks the assistant to
+work out why the 401. It starts with the sensible thing — checking whether the
+key is set at all:
 
 ```bash
-env | grep -i 'model\|api'
+env | grep -i api
 ```
 
-`grep` filters *lines*, and a line is `NAME=value`. Every key matching that
-pattern is now in the transcript verbatim — and the transcript is a file on
-disk. Claude Code keeps `.jsonl` session logs, memory tools index them, digests
-get written overnight. One careless command costs a rotation of every key on
-the machine.
+The check was right. But `grep` filters *lines*, and a line is `NAME=value`, so
+along with the answer "yes, it is set" the value itself is printed into the
+session. `cat .env` while looking at configuration ends the same way, and so
+does a plain `env` when comparing a local run against CI.
+
+From there the line has a life of its own: the session is saved as a file on
+disk (Claude Code writes `.jsonl`), memory tools index it, digests are written
+overnight. One command like that costs a rotation of every key on the machine.
 
 This is not hypothetical. It is where this repository came from: five tokens
 (Z.ai, DeepSeek, OpenRouter, Tavily, plus the assistant's own auth token)
@@ -127,11 +132,11 @@ nothing usable.
 ## Verify
 
 ```bash
-./tests/test_guard.sh          # 33 cases against the POSIX guard
-./tests/test_guard.sh --pwsh   # the same 33 against the PowerShell port
+./tests/test_guard.sh          # 36 cases against the POSIX guard
+./tests/test_guard.sh --pwsh   # the same 36 against the PowerShell port
 ```
 
-Both report `passed 33, failed 0`.
+Both report `passed 36, failed 0`.
 
 ## Uninstall
 

@@ -97,6 +97,12 @@ check 0 'helm history release'
 check 0 'docker history image'
 
 echo
+echo "allowed — a secret path named inside prose, not read by a command"
+check 0 'git commit -m "docs: cat .env ends the same way"'
+check 0 'echo "never cat ~/.bashrc in a session"'
+check 0 'grep -rn "cat .env" docs/'
+
+echo
 echo "allowed — the word appears inside a quoted program, not as a command"
 check 0 "awk '/env|printenv|set/ {print}' file.txt"
 check 0 "rg -e 'env|history|export' notes.md"
