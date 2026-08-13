@@ -137,8 +137,8 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 подробнее:
 
 ```bash
-./tests/test_guard.sh                       # 36 случаев, версия для POSIX
-./tests/test_guard.sh --pwsh                # те же 36, версия для PowerShell
+./tests/test_guard.sh                       # 40 случаев, версия для POSIX
+./tests/test_guard.sh --pwsh                # те же 40, версия для PowerShell
 ./tests/test_guard.sh --guard ~/.local/bin/secrets-guard   # установленная копия
 ```
 

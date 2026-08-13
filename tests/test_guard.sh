@@ -97,6 +97,13 @@ check 0 'helm history release'
 check 0 'docker history image'
 
 echo
+echo "allowed — the word env in everyday work, where it is not the command"
+check 0 'source env/bin/activate'
+check 0 'python -m venv env'
+check 0 'git commit -m "fix env parsing"'
+check 0 'grep -rn "env" src/'
+
+echo
 echo "allowed — a secret path named inside prose, not read by a command"
 check 0 'git commit -m "docs: cat .env ends the same way"'
 check 0 'echo "never cat ~/.bashrc in a session"'

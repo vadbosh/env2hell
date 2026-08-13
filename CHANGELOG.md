@@ -23,7 +23,7 @@ feature list.
   delegates to the same guard binary.
 - `rules/secrets-hygiene.md` — installed into each assistant so the model knows
   what to use instead of the blocked command.
-- `tests/test_guard.sh` — 36 cases, runnable against either port.
+- `tests/test_guard.sh` — 40 cases, runnable against either port.
 
 ### Fixed during development
 

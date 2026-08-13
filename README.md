@@ -66,12 +66,13 @@ safe-env | grep MODEL           # filter it — the values are already masked
 echo "$ANTHROPIC_MODEL"         # one variable, by name
 printenv PATH                   # one variable, explicit
 env VAR=value some-command      # sets a variable, dumps nothing
-awk '/env|set/ {print}' f.txt   # the word inside a quoted program is not a command
+source env/bin/activate         # here `env` is a directory name, not a command
+git commit -m "fix env parsing" # and here it is just a word in some text
 ```
 
-That last line matters more than it looks. A guard that cannot tell `env` the
-command from `env` inside a regular expression blocks your ordinary work within
-the hour, and then you switch it off.
+Those last two lines matter more than they look. A guard that cannot tell `env`
+the command from the same word in a directory name or a commit message blocks
+your ordinary work on day one, and then you switch it off.
 
 ## Install
 
@@ -132,11 +133,11 @@ nothing usable.
 ## Verify
 
 ```bash
-./tests/test_guard.sh          # 36 cases against the POSIX guard
-./tests/test_guard.sh --pwsh   # the same 36 against the PowerShell port
+./tests/test_guard.sh          # 40 cases against the POSIX guard
+./tests/test_guard.sh --pwsh   # the same 40 against the PowerShell port
 ```
 
-Both report `passed 36, failed 0`.
+Both report `passed 40, failed 0`.
 
 ## Uninstall
 

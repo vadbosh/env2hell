@@ -13,15 +13,20 @@ Two obvious approaches both fail:
 first word. It catches `env`, but not `rtk env`, which starts with `rtk`, and
 not `ls && env`, where `env` comes second.
 
-**Too wide — match the word anywhere in the string.** Those two are caught now,
-and so is
+**Too wide — match the word anywhere in the string.** Both of those are caught
+now. So is ordinary work, because the word `env` turns up in commands all the
+time:
 
 ```bash
-awk '/env|set/ {print}' file.txt
+source env/bin/activate          # a Python virtualenv in a directory named env
+python -m venv env               # creating it
+git commit -m "fix env parsing"  # the word in a commit message
+grep -rn "env" src/              # searching the code
 ```
 
-The word `env` is in there, but as part of a regular expression, not as a
-command. Within an hour the guard is switched off.
+In none of them is `env` the command: it is a directory name, a word in a
+message, a search string. A developer who is refused permission to activate a
+virtualenv will switch the guard off the same day.
 
 So the guard runs two passes over the same string, each looking at a different
 version of it.
