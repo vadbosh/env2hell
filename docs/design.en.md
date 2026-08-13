@@ -139,18 +139,37 @@ assistant shows to the model. Everything else lets the work continue.
 
 ## Why a rule file ships with it
 
-Blocking a command the model believes it needs produces retries — a different
-spelling, then another, until it gives up or finds a gap. The rule installed
-next to `secrets-guard` says what to use instead, so the first denial ends the
-matter:
+A denial on its own is not enough, and here is why.
 
+The assistant needs to know whether a key is set. It is refused — and since the
+task has not gone away, it tries another way:
+
+```bash
+env | grep API          # denied
+printenv | grep API     # denied
+sh -c 'env'             # denied
 ```
+
+Every attempt is a wasted round: your time, and one more chance of stumbling on
+a spelling the check does not take apart.
+
+The installer puts `rules/secrets-hygiene.md` where the assistant reads its
+standing instructions: `~/.claude/rules/` for Claude Code, `~/.codex/memories/`
+for Codex, `~/.config/opencode/instructions/` for Opencode — where it also adds
+the file to the `instructions` list, without which Opencode never reads it. The
+file says what to use instead:
+
+```bash
 safe-env                      # whole environment, secret values masked
 echo "$ANTHROPIC_MODEL"       # one variable, when you know the name
 ```
 
-The guard is the gate; the rule is the sign next to it. Neither replaces the
-other.
+After the first denial the assistant reaches for `safe-env`, gets the answer it
+needed, and moves on.
+
+So: `secrets-guard` stops the key being printed, and the rule says how to answer
+the original question another way. Without the rule the protection still works —
+it just costs several wasted attempts every time.
 
 ## Keys arrive from the parent shell
 

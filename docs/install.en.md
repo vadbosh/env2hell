@@ -10,7 +10,7 @@ Nothing outside your home directory. Concretely:
 | `~/.local/bin/safe-env` | the masking command, copied |
 | `~/.claude/settings.json` | one `PreToolUse` entry added |
 | `~/.codex/hooks.json` | one `PreToolUse` entry added |
-| `~/.config/opencode/opencode.json` | plugin registered, permission rules written |
+| `~/.config/opencode/opencode.json` | plugin registered, permission rules written, rule file added to `instructions` |
 | `~/.config/opencode/plugins/secrets-guard.ts` | plugin, copied |
 | `~/.claude/rules/`, `~/.config/opencode/instructions/`, `~/.codex/memories/` | the rule file |
 

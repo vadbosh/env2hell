@@ -10,7 +10,7 @@
 | `~/.local/bin/safe-env` | копируется команда со скрытием значений |
 | `~/.claude/settings.json` | добавляется одна запись `PreToolUse` |
 | `~/.codex/hooks.json` | добавляется одна запись `PreToolUse` |
-| `~/.config/opencode/opencode.json` | регистрируется плагин, записываются правила разрешений |
+| `~/.config/opencode/opencode.json` | регистрируется плагин, записываются правила разрешений, файл правила вносится в список `instructions` |
 | `~/.config/opencode/plugins/secrets-guard.ts` | копируется плагин |
 | `~/.claude/rules/`, `~/.config/opencode/instructions/`, `~/.codex/memories/` | файл правила |
 

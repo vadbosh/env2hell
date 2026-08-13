@@ -147,10 +147,16 @@ while IFS= read -r ide; do
                      "$HOME/.config/opencode/plugins/secrets-guard.ts"
     fi
 
+    # --with-rule matters for opencode only: it reads an instruction file just
+    # when the file is listed in its configuration.
+    rule_flag=""
+    [ "$WITH_RULE" -eq 1 ] && rule_flag="--with-rule"
     if [ "$DRY_RUN" -eq 1 ]; then
-        "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" --dry-run || true
+        "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
+              ${rule_flag:+"$rule_flag"} --dry-run || true
     else
-        "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" || true
+        "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
+              ${rule_flag:+"$rule_flag"} || true
     fi
 
     if [ "$WITH_RULE" -eq 1 ]; then

@@ -75,6 +75,11 @@ SECRET_FILES = [
 
 PLUGIN_ENTRY = "./plugins/secrets-guard.ts"
 
+# Opencode reads an instruction file only if it is listed here — dropping the
+# file into instructions/ is not enough, and a rule nobody reads is worse than
+# none, because it looks installed.
+INSTRUCTION_ENTRY = "~/.config/opencode/instructions/secrets-hygiene.md"
+
 
 def file_rules() -> dict:
     return {f"{r} {p}": "deny" for r in READERS for p in SECRET_FILES}
@@ -141,8 +146,17 @@ def patch_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
     return changed
 
 
-def patch_opencode(data: dict, remove: bool) -> list[str]:
+def patch_opencode(data: dict, remove: bool, with_rule: bool = False) -> list[str]:
     changed = []
+    instructions = data.setdefault("instructions", [])
+    if remove:
+        if INSTRUCTION_ENTRY in instructions:
+            instructions.remove(INSTRUCTION_ENTRY)
+            changed.append("rule unregistered")
+    elif with_rule and INSTRUCTION_ENTRY not in instructions:
+        instructions.append(INSTRUCTION_ENTRY)
+        changed.append("rule registered")
+
     plugins = data.setdefault("plugin", [])
     perm = data.setdefault("permission", {}).setdefault("bash", {})
     wanted = dict(DUMP_RULES)
@@ -182,6 +196,8 @@ def main() -> int:
     ap.add_argument("ide", choices=sorted(CONFIG))
     ap.add_argument("--guard", default="", help="absolute path to the secrets-guard CLI")
     ap.add_argument("--remove", action="store_true")
+    ap.add_argument("--with-rule", action="store_true",
+                    help="also register the rule file (opencode needs it listed)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -201,7 +217,7 @@ def main() -> int:
         return 1
 
     if args.ide == "opencode":
-        changed = patch_opencode(data, args.remove)
+        changed = patch_opencode(data, args.remove, args.with_rule)
     else:
         changed = patch_hooks(args.ide, data, args.guard, args.remove)
 

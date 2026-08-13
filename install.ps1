@@ -156,9 +156,22 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
     Say $(if ($DryRun) { '    would add hook' } else { '    hook added' })
 }
 
-function Update-OpencodeConfig ($Path) {
+function Update-OpencodeConfig ($Path, $WithRule) {
     $data = Read-Json $Path
     $changed = 0
+
+    # Opencode reads an instruction file only when it is listed here; dropping
+    # it into instructions/ is not enough.
+    $ruleEntry = '~/.config/opencode/instructions/secrets-hygiene.md'
+    if ($WithRule) {
+        if ($data.PSObject.Properties.Name -notcontains 'instructions') {
+            Set-Property $data 'instructions' @()
+        }
+        if (@($data.instructions) -notcontains $ruleEntry) {
+            $data.instructions = @(@($data.instructions) + $ruleEntry)
+            $changed++
+        }
+    }
 
     if ($data.PSObject.Properties.Name -notcontains 'plugin') { Set-Property $data 'plugin' @() }
     if (@($data.plugin) -notcontains './plugins/secrets-guard.ts') {
@@ -216,7 +229,7 @@ foreach ($name in $ides) {
     if ($name -eq 'opencode') {
         Install-File "$Src\plugins\opencode\secrets-guard.ts" `
                      "$Home_\.config\opencode\plugins\secrets-guard.ts"
-        Update-OpencodeConfig $config
+        Update-OpencodeConfig $config (-not $NoRule)
     } else {
         Update-HookConfig $name $config $guard
     }
