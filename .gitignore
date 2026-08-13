@@ -1,0 +1,34 @@
+# Backups written by the installers.
+*.bak.*
+
+# Never commit an environment file from a working machine — this repository is
+# about not printing these, so committing one would be a poor joke.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# AI assistant artefacts.
+CLAUDE.md
+AGENTS.md
+.claude/
+.codex/
+.cursor/
+.gemini/
+.ai-context/
+.memsearch/
+.opencode/
+
+# Python bytecode.
+__pycache__/
+*.pyc
+
+# OS and editor noise.
+.DS_Store
+Thumbs.db
+*.swp
+*~

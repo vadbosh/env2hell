@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# safe-env — print env with secret-looking values masked.
+# Sanctioned replacement for bare `env` under the secrets-guard hook.
+# Masks explicit provider tokens + generic high-entropy strings, so even
+# un-prefixed secrets (ZAI hex-dot, TAVILY long token) get redacted.
+set -uo pipefail
+# gawk when present, awk otherwise — these are program names being assigned,
+# not command output.
+# shellcheck disable=SC2209
+if command -v gawk >/dev/null 2>&1; then AWK=gawk; else AWK=awk; fi
+
+# The awk program is single-quoted on purpose: every $ and \ in it belongs to
+# awk, not to the shell.
+# shellcheck disable=SC2016
+env | "$AWK" -F'=' '
+function mask(v, l) { l = length(v); return "<REDACTED:" l ">" }
+BEGIN {
+  RE = "AKIA[0-9A-Z]{16}"
+  RE = RE "|(ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{36,}"
+  RE = RE "|github_pat_[A-Za-z0-9_]{22,}"
+  RE = RE "|glpat-[A-Za-z0-9_-]{20,}"
+  RE = RE "|xox[baprs]-[A-Za-z0-9-]{10,}"
+  RE = RE "|tvly-[A-Za-z0-9-]{10,}"
+  RE = RE "|AIza[A-Za-z0-9_-]{35}"
+  RE = RE "|(sk|rk)_live_[A-Za-z0-9]{20,}"
+  RE = RE "|sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}"
+  RE = RE "|at-[A-Za-z0-9]{30,}"
+  RE = RE "|eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\."
+  RE = RE "|://[^/:@ ]+:[^/:@ ]{3,}@"
+  RE = RE "|BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY"
+}
+{
+  key = $1
+  val = substr($0, length(key) + 2)
+  if (val == "") { print key; next }
+  # explicit provider token / embedded secret
+  if (val ~ RE)                                                          { print key "=" mask(val); next }
+  if (tolower($0) ~ /identified by ['"'"'"][^'"'"'"]{6,}/)                { print key "=" mask(val); next }
+  # generic high-entropy fallbacks (catch unprefixed keys: hex, hex.base64, long tokens)
+  if (val ~ /^[A-Fa-f0-9]{32,}$/)                                         { print key "=" mask(val); next }
+  if (val ~ /^[A-Za-z0-9]{20,}\.[A-Za-z0-9_-]{8,}$/)                      { print key "=" mask(val); next }
+  if (val ~ /[A-Za-z0-9_-]{40,}/ && val ~ /[A-Za-z0-9_-]\.[A-Za-z0-9_-]/)  { print key "=" mask(val); next }
+  if (val ~ /^[A-Za-z0-9_-]{40,}$/)                                       { print key "=" mask(val); next }
+  print key "=" val
+}'
