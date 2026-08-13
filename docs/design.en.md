@@ -9,11 +9,19 @@ so whatever it takes is added to every command the assistant issues.
 
 Two obvious approaches both fail:
 
-- **Match the command name.** `env` is denied, so `env | grep KEY` slips through
-  a naive prefix check, and `rtk env` slips through any of them.
-- **Match anywhere in the string.** Now `awk '/env|set/ {print}'` is denied, and
-  a regular expression containing the word `history` blocks the command that
-  contains it. Within an hour the guard is switched off.
+**Too narrow — match the start of the string.** The check then sees only the
+first word. It catches `env`, but not `rtk env`, which starts with `rtk`, and
+not `ls && env`, where `env` comes second.
+
+**Too wide — match the word anywhere in the string.** Those two are caught now,
+and so is
+
+```bash
+awk '/env|set/ {print}' file.txt
+```
+
+The word `env` is in there, but as part of a regular expression, not as a
+command. Within an hour the guard is switched off.
 
 So the guard runs two passes over the same string, each looking at a different
 version of it.
