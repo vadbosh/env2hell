@@ -88,8 +88,8 @@ git clone <этот-репозиторий> env2hell && cd env2hell
 
 ### Windows
 
-Ни Python, ни Git Bash не требуются: у запрета есть версия на PowerShell, и
-установщик тоже написан на PowerShell.
+Ни Python, ни Git Bash не требуются: у `secrets-guard` есть версия на
+PowerShell, и установщик написан на нём же.
 
 ```powershell
 .\install.ps1
@@ -108,8 +108,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 ## Как этим пользоваться
 
-Руками запускать нечего. Ассистент вызывает запрет перед каждой командой, а при
-отказе получает сообщение о том, чем пользоваться вместо неё:
+Руками запускать нечего. Ассистент вызывает `secrets-guard` перед каждой
+командой, а при отказе получает сообщение о том, чем пользоваться вместо неё:
 
 ```
 [secrets-guard] Blocked: bare env/printenv/export/set/declare leaks secrets to

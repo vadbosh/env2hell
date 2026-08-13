@@ -31,7 +31,7 @@ Only then is it split on shell separators (`|`, `||`, `&&`, `;`, `&`), and the
 first word of each piece is examined. A word inside a quoted program is gone by
 that point, so it cannot be mistaken for a command.
 
-This split is not theoretical. Before it existed, the guard blocked the very
+This split is not theoretical. Before it existed, `secrets-guard` blocked the very
 command that was editing its own configuration, because a `jq` filter contained
 `test("^(env|printenv|set)")` — split on `|`, that yields the bare words
 `printenv` and `set`.
@@ -110,7 +110,8 @@ assistant shows to the model. Everything else lets the work continue.
 
 Blocking a command the model believes it needs produces retries — a different
 spelling, then another, until it gives up or finds a gap. The rule installed
-next to the guard says what to use instead, so the first denial ends the matter:
+next to `secrets-guard` says what to use instead, so the first denial ends the
+matter:
 
 ```
 safe-env                      # whole environment, secret values masked
