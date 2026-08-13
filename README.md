@@ -1,9 +1,13 @@
 # env2hell
 
-**Send `env` to hell.** A guard that stops a coding assistant from printing your
-API keys into its own transcript, plus the replacement command it should use
-instead. Works with Claude Code, Opencode and Codex, on Linux, macOS and
-Windows.
+An assistant runs an ordinary command like `env` — and every key and token you
+have is printed straight into the session, in plain text. Anyone with access to
+that conversation can read them. And it does not go away: the session is saved
+as a file on disk, indexed by memory tools, rolled into overnight digests. That
+is how keys leak.
+
+env2hell denies those commands and gives the assistant a safe replacement.
+Works with Claude Code, Opencode and Codex, on Linux, macOS and Windows.
 
 [Русская версия](README.RU.md)
 
