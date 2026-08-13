@@ -84,6 +84,8 @@ check 2 'cat ~/.azure/msal_token_cache.json'
 echo
 echo "denied — the same stores spelled the Windows way"
 check 2 'type C:\Users\me\.aws\credentials'
+# $HOME here is text the guard must see, not something the shell should expand.
+# shellcheck disable=SC2016
 check 2 'gc $HOME\.kube\config'
 check 2 'cat C:\Users\me\_netrc'
 check 2 'type C:\Users\me\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1'
