@@ -77,6 +77,16 @@ check 2 'tail /home/user/.zshrc'
 check 2 'cat /proc/1/environ'
 check 2 'head /home/user/.aws/credentials'
 check 2 'cat ~/.ssh/id_rsa'
+check 2 'cat ~/.npmrc'
+check 2 'cat ~/.git-credentials'
+check 2 'cat ~/.azure/msal_token_cache.json'
+
+echo
+echo "denied — the same stores spelled the Windows way"
+check 2 'type C:\Users\me\.aws\credentials'
+check 2 'gc $HOME\.kube\config'
+check 2 'cat C:\Users\me\_netrc'
+check 2 'type C:\Users\me\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1'
 
 echo
 echo "allowed — one variable, or an ordinary command"

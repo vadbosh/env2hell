@@ -99,15 +99,21 @@ the installer and the documentation cannot disagree.
 The files treated as secret stores:
 
 ```
-*.env  *.pem  *.key  *.p12  *.pfx  *id_rsa*  *id_ed25519*
+*.env  *.pem  *.key  *.p12  *.pfx  *id_rsa*  *id_ed25519*  *id_ecdsa*
+.aws/credentials  .docker/config.json  .kube/config  .azure/
+.git-credentials  .npmrc  .pypirc  .pgpass  .my.cnf
 ~/.bashrc  ~/.zshrc  ~/.profile  ~/.bash_profile  ~/.zshenv  ~/.netrc
+_netrc  Microsoft.PowerShell_profile.ps1          ← the Windows spellings
 /proc/*/environ  *credentials*  *secrets*
-.aws/credentials  .docker/config.json  .kube/config
 ```
 
-Reading one of these with `cat`, `head`, `tail`, `less`, `strings` and the like
-is denied. Listing them, moving them or checking that they exist is not — the
-guard is about printing content, not about the files themselves.
+Either path separator is accepted, so the Windows form of the same store —
+`C:\Users\you\.aws\credentials` — is matched as readily as the Unix one.
+
+Reading one of these with `cat`, `head`, `tail`, `less`, `strings`, or with
+PowerShell's `type` and `gc`, is denied. Listing them, moving them or checking
+that they exist is not — the guard is about printing content, not about the
+files themselves.
 
 ## When a key does leak anyway
 

@@ -74,9 +74,26 @@ A fragment that does not look like a command name at all — one starting with
 ## Pass B — files that hold credentials
 
 Pass B requires two things at once: a reading command (`cat`, `head`, `tail`,
-`less`, `strings`, …) and a path that looks like a secret store (`.env`,
-`~/.bashrc`, `*.pem`, `id_rsa`, `/proc/N/environ`, `.aws/credentials`,
-`.kube/config`).
+`less`, `strings`, and PowerShell's `type` and `gc`) and a path that looks like
+a secret store.
+
+One list covers every system, and either path separator is accepted, because a
+Git Bash or WSL shell is handed one spelling one moment and the other the next:
+
+| What | Where |
+|---|---|
+| `.env`, `*.pem`, `*.p12`, `*.pfx` | everywhere |
+| `id_rsa`, `id_ed25519`, `id_ecdsa` | everywhere |
+| `.aws/credentials`, `.kube/config`, `.docker/config.json`, `.azure/` | everywhere, backslashed on Windows |
+| `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.my.cnf` | everywhere |
+| `.bashrc`, `.zshrc`, `.profile`, `.netrc` | POSIX |
+| `_netrc` | Windows, where that is what `.netrc` is called |
+| `Microsoft.PowerShell_profile.ps1` | Windows, where `$env:API_KEY = "..."` is written |
+| `/proc/N/environ` | Linux only; no such file elsewhere |
+
+The last two rows are what stops the list being half a list. On Windows the
+PowerShell profile plays the part `.bashrc` plays elsewhere, and a key sits in
+it just as plainly.
 
 The two are looked for in different versions of the string, and the split is
 the whole trick:

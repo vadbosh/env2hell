@@ -130,8 +130,8 @@ The installer ends with a check of its own: it feeds `env` and `echo hi` to the
 guard and expects exit 2 and exit 0. To go further:
 
 ```bash
-./tests/test_guard.sh                       # 40 cases, the POSIX guard
-./tests/test_guard.sh --pwsh                # the same 40, the PowerShell port
+./tests/test_guard.sh                       # 47 cases, the POSIX guard
+./tests/test_guard.sh --pwsh                # the same 47, the PowerShell port
 ./tests/test_guard.sh --guard ~/.local/bin/secrets-guard   # the installed copy
 ```
 

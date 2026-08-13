@@ -74,9 +74,26 @@ sudo rtk env    →  пропустить sudo, пропустить rtk, смо
 ## Проход B — файлы, где лежат учётные данные
 
 Проход B требует совпадения сразу по двум признакам: есть читающая команда
-(`cat`, `head`, `tail`, `less`, `strings` и подобные) и есть путь, похожий на
-хранилище секретов (`.env`, `~/.bashrc`, `*.pem`, `id_rsa`, `/proc/N/environ`,
-`.aws/credentials`, `.kube/config`).
+(`cat`, `head`, `tail`, `less`, `strings`, а также `type` и `gc` из PowerShell)
+и есть путь, похожий на хранилище секретов.
+
+Список путей общий для всех систем — разделитель принимается и прямой, и
+обратный, потому что в Git Bash или WSL приходит то одно написание, то другое:
+
+| Что | Где |
+|---|---|
+| `.env`, `*.pem`, `*.p12`, `*.pfx` | везде |
+| `id_rsa`, `id_ed25519`, `id_ecdsa` | везде |
+| `.aws/credentials`, `.kube/config`, `.docker/config.json`, `.azure/` | везде, на Windows — через обратный слэш |
+| `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.my.cnf` | везде |
+| `.bashrc`, `.zshrc`, `.profile`, `.netrc` | POSIX |
+| `_netrc` | Windows: там `.netrc` называется так |
+| `Microsoft.PowerShell_profile.ps1` | Windows: в него пишут `$env:API_KEY = "..."` |
+| `/proc/N/environ` | только Linux, в других системах такого файла нет |
+
+Две последние строки нужны ровно потому, что список без них был бы половинным:
+на Windows роль `.bashrc` играет профиль PowerShell, и ключ в нём лежит так же
+открыто.
 
 Ищутся они в разных версиях строки, и в этом всё дело:
 

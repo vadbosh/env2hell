@@ -61,10 +61,15 @@ READERS = ["cat", "head", "tail", "less", "more", "strings",
 
 SECRET_FILES = [
     "*.env", "*.env.*", "*/.env", "*.pem", "*.key", "*.p12", "*.pfx",
-    "*id_rsa*", "*id_ed25519*",
+    "*id_rsa*", "*id_ed25519*", "*id_ecdsa*",
     "*/.bashrc*", "*/.zshrc*", "*/.profile*", "*/.bash_profile*",
-    "*/.zshenv*", "*/.netrc*",
+    "*/.zshenv*", "*/.netrc*", "*_netrc*",
     "~/.bashrc*", "~/.zshrc*", "~/.profile*",
+    # Credential stores of everyday tools; the same paths on Windows.
+    "*.git-credentials*", "*.npmrc*", "*.pypirc*", "*.pgpass*", "*.my.cnf*",
+    "*.azure/*", "*.kube/config*", "*.docker/config.json*",
+    # Where a Windows user writes `$env:API_KEY = "..."`.
+    "*Microsoft.PowerShell_profile.ps1*",
     "/proc/*/environ*", "*credentials*", "*secrets*",
 ]
 

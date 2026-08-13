@@ -112,9 +112,13 @@ $DumpRules = [ordered]@{
 }
 $Readers = @('cat','head','tail','less','more','strings','xxd','od','nl','tac','bat','batcat')
 $SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
-                 '*id_rsa*','*id_ed25519*','*/.bashrc*','*/.zshrc*','*/.profile*',
-                 '*/.bash_profile*','*/.zshenv*','*/.netrc*','~/.bashrc*','~/.zshrc*',
-                 '~/.profile*','/proc/*/environ*','*credentials*','*secrets*')
+                 '*id_rsa*','*id_ed25519*','*id_ecdsa*','*/.bashrc*','*/.zshrc*',
+                 '*/.profile*','*/.bash_profile*','*/.zshenv*','*/.netrc*','*_netrc*',
+                 '~/.bashrc*','~/.zshrc*','~/.profile*',
+                 '*.git-credentials*','*.npmrc*','*.pypirc*','*.pgpass*','*.my.cnf*',
+                 '*.azure/*','*.kube/config*','*.docker/config.json*',
+                 '*Microsoft.PowerShell_profile.ps1*',
+                 '/proc/*/environ*','*credentials*','*secrets*')
 
 function Set-Property ($Object, $Name, $Value) {
     if ($Object.PSObject.Properties.Name -contains $Name) { $Object.$Name = $Value }

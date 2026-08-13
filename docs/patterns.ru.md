@@ -99,15 +99,22 @@ $env:SAMPLE = 'glpat-EXAMPLEEXAMPLEEXAMPLE1234'
 Файлы, которые считаются хранилищем секретов:
 
 ```
-*.env  *.pem  *.key  *.p12  *.pfx  *id_rsa*  *id_ed25519*
+*.env  *.pem  *.key  *.p12  *.pfx  *id_rsa*  *id_ed25519*  *id_ecdsa*
+.aws/credentials  .docker/config.json  .kube/config  .azure/
+.git-credentials  .npmrc  .pypirc  .pgpass  .my.cnf
 ~/.bashrc  ~/.zshrc  ~/.profile  ~/.bash_profile  ~/.zshenv  ~/.netrc
+_netrc  Microsoft.PowerShell_profile.ps1          ← написания для Windows
 /proc/*/environ  *credentials*  *secrets*
-.aws/credentials  .docker/config.json  .kube/config
 ```
 
-Чтение любого из них через `cat`, `head`, `tail`, `less`, `strings` и подобные
-запрещено. Перечислить их, переместить или проверить существование можно:
-запрет касается печати содержимого, а не самих файлов.
+Разделитель пути принимается любой, поэтому то же хранилище в написании для
+Windows — `C:\Users\you\.aws\credentials` — ловится так же, как путь через
+прямой слэш.
+
+Чтение любого из них через `cat`, `head`, `tail`, `less`, `strings`, а также
+через `type` и `gc` из PowerShell, запрещено. Перечислить их, переместить или
+проверить существование можно: запрет касается печати содержимого, а не самих
+файлов.
 
 ## Если ключ всё же утёк
 

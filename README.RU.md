@@ -133,11 +133,11 @@ TAVILY_API_KEY=<REDACTED:57>
 ## Проверка
 
 ```bash
-./tests/test_guard.sh          # 40 случаев против версии для POSIX
-./tests/test_guard.sh --pwsh   # те же 40 против версии для PowerShell
+./tests/test_guard.sh          # 47 случаев против версии для POSIX
+./tests/test_guard.sh --pwsh   # те же 47 против версии для PowerShell
 ```
 
-Обе версии дают `passed 40, failed 0`.
+Обе версии дают `passed 47, failed 0`.
 
 ## Удаление
 

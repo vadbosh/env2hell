@@ -133,11 +133,11 @@ nothing usable.
 ## Verify
 
 ```bash
-./tests/test_guard.sh          # 40 cases against the POSIX guard
-./tests/test_guard.sh --pwsh   # the same 40 against the PowerShell port
+./tests/test_guard.sh          # 47 cases against the POSIX guard
+./tests/test_guard.sh --pwsh   # the same 47 against the PowerShell port
 ```
 
-Both report `passed 40, failed 0`.
+Both report `passed 47, failed 0`.
 
 ## Uninstall
 

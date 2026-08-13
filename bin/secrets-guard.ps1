@@ -106,7 +106,19 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\|')) {
 # That split keeps prose out of the decision: a commit message containing the
 # words `cat .env` is an argument, not a command.
 $readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|strings|type|gc|get-content)([\s]|$)'
-$secrets = '((^|[\s"''/=])\.env([.\s"'']|$)|[/\\]\.(bashrc|zshrc|profile|bash_profile|zshenv|zprofile|netrc)|id_rsa|id_ed25519|\.pem([\s"'']|$)|\.p12([\s"'']|$)|\.pfx([\s"'']|$)|/proc/[0-9]+/environ|\.aws[/\\]credentials|\.docker[/\\]config\.json|\.kube[/\\]config)'
+
+# Kept identical to the POSIX version, store for store. Both path separators are
+# accepted everywhere: a Windows path uses a backslash, and a Git Bash or WSL
+# shell is routinely handed the other spelling.
+$secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
+           '|[/\\][._](bashrc|zshrc|profile|bash_profile|zshenv|zprofile|netrc)' +
+           '|id_rsa|id_ed25519|id_ecdsa' +              # private keys
+           '|\.(pem|p12|pfx)([\s"'']|$)' +              # certificates
+           '|\.aws[/\\]credentials|\.docker[/\\]config\.json' +
+           '|\.kube[/\\]config|\.azure[/\\]' +
+           '|\.git-credentials|\.npmrc|\.pypirc|\.pgpass|\.my\.cnf' +
+           '|Microsoft\.PowerShell_profile\.ps1' +      # where $env:KEY is set
+           '|/proc/[0-9]+/environ)'                     # Linux only, by nature
 
 if ($scan -match $readers -and $command -match $secrets) {
     Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
