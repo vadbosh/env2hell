@@ -9,10 +9,20 @@ set -uo pipefail
 # shellcheck disable=SC2209
 if command -v gawk >/dev/null 2>&1; then AWK=gawk; else AWK=awk; fi
 
+# /usr/bin/env by absolute path, not `env`. PATH resolution is not safe here:
+# the uv installer writes a file of its own named `env` into ~/.local/bin — a
+# PATH-setup snippet meant to be sourced — and ~/.local/bin comes first, so a
+# bare `env` ran that instead, printed nothing, exited 0, and safe-env silently
+# produced an empty environment. An empty answer from this tool reads like "no
+# variables", not like "the tool is broken", which is the worse failure.
+ENV_BIN=/usr/bin/env
+[ -x "$ENV_BIN" ] || ENV_BIN=/bin/env
+[ -x "$ENV_BIN" ] || { echo "safe-env: no env binary at /usr/bin/env or /bin/env" >&2; exit 3; }
+
 # The awk program is single-quoted on purpose: every $ and \ in it belongs to
 # awk, not to the shell.
 # shellcheck disable=SC2016
-env | "$AWK" -F'=' '
+"$ENV_BIN" | "$AWK" -F'=' '
 function mask(v, l) { l = length(v); return "<REDACTED:" l ">" }
 BEGIN {
   RE = "AKIA[0-9A-Z]{16}"

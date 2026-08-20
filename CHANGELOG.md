@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0 — 2026-08-20
+
+The release that found out `safe-env` had been printing nothing. Restoring this
+machine from a backup is what surfaced it, and neither the tool nor its tests
+would have said a word.
+
+### Fixed
+
+- **`safe-env` called `env` through PATH, and got the wrong one.** The uv
+  installer writes a file of its own named `env` into `~/.local/bin` — a
+  PATH-setup snippet meant to be sourced, not run. With `~/.local/bin` first on
+  PATH, `safe-env` executed that instead: it set a variable, printed nothing and
+  exited 0. So the sanctioned replacement for a bare `env` returned an empty
+  environment, and an empty answer here reads like "nothing is set" rather than
+  "this is broken". Now `/usr/bin/env` by absolute path, with `/bin/env` as the
+  fallback and a real error if neither exists.
+
+### Added
+
+- **`tests/test_safe_env.sh`.** The bug above was silent because nothing
+  asserted that the output was non-empty. Five cases: the environment comes
+  back at all, a planted `ghp_` token is masked, the masked variable is still
+  named, a plain value is untouched, and an unprefixed hex run is masked anyway.
+  Verified against the broken copy — 4 of the 5 fail there.
+
+### Changed
+
+- **`release.sh`** checks the changelog, the tag and the installed copies
+  against each other, so a mirror that drifted from this checkout is reported
+  instead of being discovered later.
+- **Work notes are kept out of the published tree.**
+- **The Windows path case in the guard tests is marked as intentional shell
+  text**, so it stops reading like an escaping mistake.
+
 ## 0.1.0 — 2026-08-13
 
 First release. Everything here came out of one incident and the session that
