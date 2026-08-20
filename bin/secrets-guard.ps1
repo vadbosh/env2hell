@@ -120,8 +120,42 @@ $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            '|Microsoft\.PowerShell_profile\.ps1' +      # where $env:KEY is set
            '|/proc/[0-9]+/environ)'                     # Linux only, by nature
 
-if ($scan -match $readers -and $command -match $secrets) {
-    Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
+# The reader and the path have to be in the SAME sub-command. Looking for them
+# anywhere in the whole line denied things that read nothing:
+#
+#   rsync -e "ssh -i ~/.ssh/id.pem" host:/src /dst | head -5
+#
+# `.pem` there is the identity ssh authenticates with, and `head` reads rsync's
+# output — two different commands, neither reading a key. Requiring locality
+# keeps every real case (`cat .env`, `cat .env | grep X`, `ls && cat .env` all
+# have both halves in one sub-command) and drops that class of false positive.
+#
+# The split runs on the RAW text, because the path is what is being looked for
+# and the quote-stripping above would erase a quoted one. A separator inside
+# quotes is not a separator, so a quoted program holding `;` or `|` stays whole.
+$rawSubs = @()
+$buf = ''
+$quote = ''
+foreach ($ch in $command.ToCharArray()) {
+    if ($quote -eq '') {
+        if ($ch -eq '"' -or $ch -eq "'") { $quote = $ch; $buf += $ch; continue }
+        if ($ch -eq ';' -or $ch -eq '&' -or $ch -eq '|') { $rawSubs += $buf; $buf = ''; continue }
+        $buf += $ch
+    } else {
+        if ($ch -eq $quote) { $quote = '' }
+        $buf += $ch
+    }
+}
+$rawSubs += $buf
+
+foreach ($rawSub in $rawSubs) {
+    if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
+    # Same stripping as pass A: the reader must be a command, not a word inside
+    # a quoted program.
+    $subScan = $rawSub -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
+    if ($subScan -match $readers -and $rawSub -match $secrets) {
+        Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
+    }
 }
 
 exit 0

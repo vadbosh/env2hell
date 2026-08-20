@@ -128,5 +128,19 @@ check 0 "rg -e 'env|history|export' notes.md"
 check 0 "jq -r '.a | select(.k|test(\"^(env|set)\"))' f.json"
 
 echo
+echo "allowed — a key handed to ssh is what authenticates, not a file being read"
+check 0 'rsync -e "ssh -i /root/.ssh/id.pem" host:/src /dst | head -5'
+check 0 'scp -i ~/.ssh/id_rsa host:/tmp/log . && tail -20 log'
+check 0 'ssh -i ~/.ssh/id_ed25519 host "uptime" | head -3'
+check 0 'rsync -e "ssh -i ~/.ssh/id.pem" a b; cat report.txt'
+
+echo
+echo "denied — locality is per sub-command, so a real read still counts"
+check 2 'rsync -e "ssh -i ~/.ssh/id.pem" a b | head -5; cat ~/.ssh/id_rsa'
+check 2 'ssh -i ~/.ssh/id.pem host uptime && cat .env'
+check 2 'cat ~/.ssh/id_rsa | head -5'
+check 2 'head -5 .env | grep TOKEN'
+
+echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

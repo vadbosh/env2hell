@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.2.1 — 2026-08-20
+
+### Fixed
+
+- **A key handed to `ssh` was read as a file being read.** Pass B looked for a
+  reader anywhere in the command and a secret path anywhere in the command,
+  without requiring the two to be in the same place. So
+
+  ```
+  rsync -e "ssh -i ~/.ssh/id.pem" host:/src /dst | head -5
+  ```
+
+  was denied: `.pem` is the identity ssh authenticates with, `head` reads
+  rsync's output, and neither reads a key. Both passes now split the command
+  and require the reader and the path to land in the **same sub-command**.
+  Every real case already satisfies that — `cat .env`, `cat .env | grep X`,
+  `ls && cat .env` all carry both halves in one piece — so nothing that was
+  denied before is allowed now. Four cases were added proving the ssh forms
+  pass, and four more proving a genuine read in any sub-command is still
+  denied, including when it sits next to one of those ssh commands.
+
+  The split is quote-aware and runs on the raw text: the path is what is being
+  matched, quote-stripping would erase a quoted one, and a separator inside
+  quotes is not a separator — a quoted `jq` program holding `;` or `|` stays
+  whole.
+
+- **The PowerShell port had the same bug and now has the same fix**, verified
+  by running the suite against it — `./tests/test_guard.sh --pwsh`, 55 of 55.
+  Both ports are tested here for the first time; before this the port was
+  shipped on inspection alone.
+
 ## 0.2.0 — 2026-08-20
 
 The release that found out `safe-env` had been printing nothing. Restoring this
