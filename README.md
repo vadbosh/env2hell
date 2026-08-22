@@ -191,6 +191,7 @@ purpose of having made them.
 | Claude Code | `PreToolUse` hook, matcher `Bash`, in `settings.json` |
 | Claude Code | `PostToolUse` hook, matcher `Bash`, in `settings.json` — the redactor |
 | Codex | `PreToolUse` hook, matcher `^Bash$`, in `hooks.json` |
+| Codex | `PostToolUse` hook, matcher `^Bash$` — the redactor, warning only |
 | Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin |
 | Opencode | a `tool.execute.after` plugin — the redactor |
 
@@ -204,12 +205,23 @@ Code replaces the result through `hookSpecificOutput.updatedToolOutput`;
 Opencode hands a plugin a mutable `output`, so the masked string is written back
 in place. Both call the same CLI, in `--filter` mode for the plugin.
 
-**Codex cannot do this, and the reason is in its source.** `PostToolUseOutcome`
-(`codex-rs/hooks/src/events/post_tool_use.rs`) carries `should_block`,
-`additional_contexts` and `feedback_message` — and nothing that replaces the
-result. A Codex PostToolUse hook can comment on output it has already shown the
-model; it cannot take it back. Codex keeps the guard, which is the half that
-works there, and `install.sh` does not pretend otherwise.
+**Codex cannot replace a result, and the reason is in its source.**
+`PostToolUseOutcome` (`codex-rs/hooks/src/events/post_tool_use.rs`) carries
+`should_block`, `additional_contexts` and `feedback_message` — and nothing that
+replaces the output. So there the hook does the one thing left: it says a
+credential is now in the transcript, through `additionalContext`.
+
+```
+[secrets-redact] This output contains 1 credential-shaped value(s). Hooks in
+this assistant cannot remove it, so it is already in the transcript. Do not
+repeat it, do not echo the command that produced it, and tell the user the
+value has to be rotated.
+```
+
+The warning names no value and no command. Repeating either would put a second
+copy in the transcript the warning is about. It does not undo the leak — it
+turns a silent one into a rotation, which is the difference between finding out
+now and finding out never.
 
 ## Documentation
 

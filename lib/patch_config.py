@@ -9,11 +9,17 @@ Each assistant stores the same intent in a different place:
     opencode  ~/.config/opencode/opencode.json
                                            plugin[] entry + permission.bash deny rules
 
-secrets-redact is wired for Claude Code only. Replacing a tool result after the
-fact needs hookSpecificOutput.updatedToolOutput, which is a documented Claude
-Code field; the codex and opencode hook contracts have no equivalent that has
-been verified here, and a hook whose output is ignored is worse than none — it
-reads as protection that is not there.
+secrets-redact reaches each of them differently, because their hook contracts
+differ:
+
+    claude    replaces the result via hookSpecificOutput.updatedToolOutput
+    codex     cannot replace anything, so it warns instead (--warn-only)
+    opencode  a tool.execute.after plugin, installed as a file, not wired here
+
+Codex's PostToolUseOutcome (codex-rs/hooks/src/events/post_tool_use.rs) has
+should_block, additional_contexts and feedback_message and no field that
+replaces output. The warning names no value and no command — repeating either
+would put a second copy in the transcript the warning is about.
 
 Opencode needs the two layers together. `permission.bash` matches on a command
 prefix, so on its own it never sees `env | grep X`, `rtk env` or `a && env`;
@@ -48,8 +54,18 @@ CONFIG = {
 
 MATCHER = {"claude": "Bash", "codex": "^Bash$"}
 
-# Assistants whose hook contract can replace a tool result once it exists.
+# Assistants whose hook contract can replace a tool result once it exists, and
+# those that can only be told about it. Codex's PostToolUseOutcome carries
+# should_block, additional_contexts and feedback_message and nothing that
+# replaces output, so there it warns instead — which is what turns a silent leak
+# into a rotation.
 REDACT_IDES = {"claude"}
+WARN_IDES = {"codex"}
+
+
+def redact_command(ide: str, redact: str) -> str:
+    return redact if ide in REDACT_IDES else redact + " --warn-only"
+
 
 # Commands that print the whole environment, and the readers that would print a
 # file full of secrets. Kept here so the installer and the docs cannot drift.
@@ -279,8 +295,9 @@ def main() -> int:
         changed = patch_opencode(data, args.remove, args.with_rule)
     else:
         changed = patch_hooks(args.ide, data, args.guard, args.remove)
-        if args.ide in REDACT_IDES and (args.redact or args.remove):
-            changed += patch_post_hooks(args.ide, data, args.redact, args.remove)
+        if args.ide in (REDACT_IDES | WARN_IDES) and (args.redact or args.remove):
+            command = redact_command(args.ide, args.redact) if args.redact else ""
+            changed += patch_post_hooks(args.ide, data, command, args.remove)
 
     if not changed:
         print("    = already current")

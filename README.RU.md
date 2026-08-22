@@ -192,6 +192,7 @@ TAVILY_API_KEY=<REDACTED:57>
 | Claude Code | Хук `PreToolUse`, шаблон `Bash`, в `settings.json` |
 | Claude Code | Хук `PostToolUse`, шаблон `Bash`, в `settings.json` — это `secrets-redact` |
 | Codex | Хук `PreToolUse`, шаблон `^Bash$`, в `hooks.json` |
+| Codex | Хук `PostToolUse`, шаблон `^Bash$` — `secrets-redact`, только предупреждение |
 | Opencode | Запрещающие правила `permission.bash` **и** плагин `tool.execute.before` |
 | Opencode | Плагин `tool.execute.after` — это `secrets-redact` |
 
@@ -206,13 +207,23 @@ Opencode требует обоих слоёв. `permission.bash` сравнив�
 передаёт плагину изменяемый `output`, и туда же записывается изменённая строка.
 Оба вызывают один и тот же CLI — плагин в режиме `--filter`.
 
-**В Codex этого сделать нельзя, и причина видна в его исходниках.** Структура
-`PostToolUseOutcome` (`codex-rs/hooks/src/events/post_tool_use.rs`) содержит
-`should_block`, `additional_contexts` и `feedback_message` — и ничего, чем
-заменить результат. Хук `PostToolUse` в Codex может прокомментировать вывод,
-который модель уже увидела, но не может его забрать. В Codex остаётся
-`secrets-guard` — та половина, которая там работает, — и `install.sh` не делает
-вид, что есть вторая.
+**Заменить результат в Codex нельзя, и причина видна в его исходниках.**
+Структура `PostToolUseOutcome` (`codex-rs/hooks/src/events/post_tool_use.rs`)
+содержит `should_block`, `additional_contexts` и `feedback_message` — и ничего,
+чем заменить вывод. Поэтому там хук делает единственное, что остаётся: сообщает
+через `additionalContext`, что в журнале сессии теперь лежит секрет.
+
+```
+[secrets-redact] This output contains 1 credential-shaped value(s). Hooks in
+this assistant cannot remove it, so it is already in the transcript. Do not
+repeat it, do not echo the command that produced it, and tell the user the
+value has to be rotated.
+```
+
+В предупреждении нет ни самого значения, ни команды, которая его напечатала:
+и то и другое положило бы вторую копию в тот самый журнал, о котором
+предупреждают. Утечку это не отменяет — оно превращает молчаливую утечку в
+ротацию, а это разница между «узнать сейчас» и «не узнать никогда».
 
 ## Документация
 

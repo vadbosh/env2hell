@@ -172,9 +172,17 @@ pub struct PostToolUseOutcome {
 }
 ```
 
-— block, add context, say something. Nothing replaces the result. A hook there
-could tell the model that the output it just read contained a password, which
-is not redaction; it is a second copy of the problem. Codex keeps the guard.
+— block, add context, say something. Nothing replaces the result.
+
+So Codex gets `--warn-only`, which does the one thing that contract allows: it
+reports through `additionalContext` that a credential-shaped value is in the
+output, and says how many. It names no value and no command, because either
+would put a second copy in the transcript being warned about.
+
+That is not redaction and the mode name says so. What it buys is that the leak
+stops being silent: the model is told the value is compromised, which is what
+starts a rotation. Finding out now beats finding out never, and Codex keeps the
+guard either way.
 
 Two tiers decide what to mask:
 

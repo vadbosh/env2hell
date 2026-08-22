@@ -184,6 +184,38 @@ else
     no "--filter needs no jq" "got: $nojq_filter"
 fi
 
+# ── --warn-only: what an assistant that cannot replace output gets ──────────
+# Codex names the shell result `output`, Claude Code splits it into stdout and
+# stderr; the warning path reads all three, so the Codex shape is the one worth
+# asserting — it is the shape the other modes never see.
+warn="$(printf '{"tool_response":{"output":"croc --pass %s code"}}' "$HEX" | bash "$TOOL" --warn-only)"
+
+if printf '%s' "$warn" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+    ok "--warn-only reports through additionalContext"
+else
+    no "--warn-only reports through additionalContext" "got: $warn"
+fi
+
+# The whole point is a warning that does not repeat what it is warning about.
+if printf '%s' "$warn" | grep -q "$HEX"; then
+    no "--warn-only never repeats the value" "the secret is in the warning itself"
+else
+    ok "--warn-only never repeats the value"
+fi
+
+if printf '%s' "$warn" | jq -e '.hookSpecificOutput.updatedToolOutput' >/dev/null 2>&1; then
+    no "--warn-only claims no power it lacks" "it emitted updatedToolOutput, which Codex ignores"
+else
+    ok "--warn-only claims no power it lacks"
+fi
+
+quiet="$(printf '{"tool_response":{"output":"md5 %s"}}' "$HEX" | bash "$TOOL" --warn-only)"
+if [ "$quiet" = "" ]; then
+    ok "--warn-only stays silent on a bare checksum"
+else
+    no "--warn-only stays silent on a bare checksum" "it warned about: $quiet"
+fi
+
 # ── the Opencode plugin must call this CLI, not reimplement it ──────────────
 PLUGIN="$SRC/plugins/opencode/secrets-redact.ts"
 if [ -f "$PLUGIN" ]; then

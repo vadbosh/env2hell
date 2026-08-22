@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.5.0 — 2026-08-22
+
+### Added
+
+- **Codex gets `secrets-redact` after all, as a warning.** 0.4.0 filed Codex
+  under "cannot", which was true about redaction and wrong as a conclusion:
+  `install.sh` was putting the command on PATH and then wiring nothing, so the
+  one assistant that could not mask a secret also said nothing about one.
+
+  `PostToolUseOutcome` still has no field that replaces output. What it does
+  have is `additional_contexts`, so `--warn-only` uses it:
+
+  ```
+  [secrets-redact] This output contains 1 credential-shaped value(s). Hooks in
+  this assistant cannot remove it, so it is already in the transcript. Do not
+  repeat it, do not echo the command that produced it, and tell the user the
+  value has to be rotated.
+  ```
+
+  No value, no command — either would put a second copy in the transcript the
+  warning is about. This is not redaction and the flag name says so; what it
+  buys is that the leak stops being silent, which is what starts a rotation.
+
+  The mode also reads `tool_response.output`, the field Codex uses for a shell
+  result. Claude Code splits the same thing into `stdout` and `stderr`, and the
+  redaction path had only ever looked at those two — against a Codex payload it
+  would have found nothing to examine.
+
+### Changed
+
+- `lib/patch_config.py` picks the mode per assistant rather than skipping the
+  ones it cannot fully serve: `REDACT_IDES` replaces the result, `WARN_IDES`
+  reports it.
+- Four more cases in `tests/test_redact.sh` (28 total), including one that
+  fails if the warning ever contains the value it is warning about, and one
+  that fails if `--warn-only` emits `updatedToolOutput` — a field Codex
+  ignores, which would make the mode look like protection it is not.
+
 ## 0.4.0 — 2026-08-22
 
 ### Added
