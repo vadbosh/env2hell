@@ -6,7 +6,7 @@ Each assistant stores the same intent in a different place:
     claude    ~/.claude/settings.json      hooks.PreToolUse[] entry, matcher "Bash"
                                            hooks.PostToolUse[] entry, matcher "Bash"
     codex     ~/.codex/hooks.json          hooks.PreToolUse[] entry, matcher "^Bash$"
-    opencode  ~/.config/opencode/opencode.json
+    opencode  ~/.config/opencode/opencode.json  (or .jsonc — whichever exists)
                                            plugin[] entry + permission.bash deny rules
 
 secrets-redact reaches each of them differently, because their hook contracts
@@ -46,10 +46,30 @@ import time
 
 HOME = os.path.expanduser("~")
 
+def _opencode_config() -> str:
+    """Whichever config file Opencode reads here, in the order it reads them.
+
+    Opencode accepts more than one filename and loads the first that exists —
+    its own startup log shows it trying opencode.json and then opencode.jsonc.
+    Hardcoding the first meant that on a machine using the second, this script
+    reported "config not found" and silently installed nothing: the plugin got
+    written, the permission rules never did, and the installer said so in a
+    line that reads like a note rather than a failure.
+
+    When neither exists, the first is the one to create.
+    """
+    d = os.path.join(HOME, ".config", "opencode")
+    for name in ("opencode.json", "opencode.jsonc"):
+        candidate = os.path.join(d, name)
+        if os.path.exists(candidate):
+            return candidate
+    return os.path.join(d, "opencode.json")
+
+
 CONFIG = {
     "claude": os.path.join(HOME, ".claude", "settings.json"),
     "codex": os.path.join(HOME, ".codex", "hooks.json"),
-    "opencode": os.path.join(HOME, ".config", "opencode", "opencode.json"),
+    "opencode": _opencode_config(),
 }
 
 MATCHER = {"claude": "Bash", "codex": "^Bash$"}

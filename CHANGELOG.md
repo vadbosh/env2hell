@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.1 — 2026-08-22
+
+### Fixed
+
+- **Opencode was silently getting half an installation.** `patch_config.py`
+  hardcoded `~/.config/opencode/opencode.json`, and Opencode accepts more than
+  one filename — its own startup log shows it trying `opencode.json` and then
+  `opencode.jsonc`. On a machine using the second spelling the installer wrote
+  the plugin, printed `config not found: …/opencode.json`, and moved on. The
+  `permission.bash` deny rules — the layer that works before a plugin is even
+  loaded — were never installed, and the line announcing it reads like a note
+  rather than a failure.
+
+  The path is now resolved the way Opencode resolves it: first filename that
+  exists, and the first of the pair when neither does. On the machine this was
+  found on, wiring it afterwards wrote 394 permission rules that had been
+  missing since the first install.
+
 ## 0.5.0 — 2026-08-22
 
 ### Added
