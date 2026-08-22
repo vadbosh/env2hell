@@ -152,8 +152,29 @@ croc send report.pdf
 подробный режим `curl` и вообще любая программа, которая пересказывает
 полученные аргументы.
 
-`secrets-redact` работает хуком `PostToolUse` и заменяет результат через поле
-`hookSpecificOutput.updatedToolOutput` — до модели доходит уже изменённый текст.
+`secrets-redact` встаёт перед моделью тем способом, который предлагает сам
+ассистент. Claude Code: хук `PostToolUse`, заменяющий результат через поле
+`hookSpecificOutput.updatedToolOutput`. Opencode: плагин `tool.execute.after`,
+у которого `output` изменяемый по замыслу, — туда и записывается изменённая
+строка. Правило при этом одно: плагин вызывает тот же CLI в режиме `--filter`,
+где на входе и выходе обычный текст, без JSON и без `jq`.
+
+Codex — исключение, и не потому, что не пробовали. Его структура
+`PostToolUseOutcome` (`codex-rs/hooks/src/events/post_tool_use.rs`) выглядит так:
+
+```rust
+pub struct PostToolUseOutcome {
+    pub hook_events: Vec<HookCompletedEvent>,
+    pub should_block: bool,
+    pub additional_contexts: Vec<String>,
+    pub feedback_message: Option<String>,
+}
+```
+
+Запретить, добавить контекст, что-то сказать. Заменить результат нечем. Хук там
+мог бы сообщить модели, что в только что прочитанном выводе был пароль, — но это
+не замена секрета, это его вторая копия. В Codex остаётся `secrets-guard`.
+
 Что скрывать, решают два уровня.
 
 **Уровень 1 — форматы поставщиков.** `ghp_`, `glpat-`, `AKIA`, JWT, заголовок

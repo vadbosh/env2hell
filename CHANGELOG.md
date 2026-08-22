@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.4.0 — 2026-08-22
+
+### Added
+
+- **`secrets-redact` now covers Opencode too**, through a `tool.execute.after`
+  plugin. Opencode hands a plugin a mutable `output`, so the masked string is
+  written back in place — a different mechanism from Claude Code's
+  `updatedToolOutput`, same policy underneath.
+
+- **`secrets-redact --filter`** — plain text in, masked text out, exit 0 when
+  something changed and 1 when nothing did. This is what the plugin calls:
+  wrapping a string in the Claude Code payload shape only to unwrap it again
+  would be ceremony, and this mode needs no `jq`. It is also the mode to reach
+  for by hand, in a pipe.
+
+### Not added, and why
+
+- **Codex cannot redact output, and this is settled rather than assumed.** Its
+  `PostToolUseOutcome` (`codex-rs/hooks/src/events/post_tool_use.rs`) carries
+  `should_block`, `additional_contexts` and `feedback_message` — nothing that
+  replaces a result. A hook there could tell the model that the output it has
+  already read contained a password, which is not redaction but a second copy
+  of the problem. Codex keeps `secrets-guard`, the half that works there.
+
+  The 0.3.0 notes said no *verified* equivalent existed. It is verified now, in
+  both directions: Opencode can, Codex cannot.
+
+### Changed
+
+- `install.sh` installs the second Opencode plugin; `uninstall.sh` removes it.
+- Five more cases in `tests/test_redact.sh` (24 total): `--filter` in both
+  directions, `--filter` without `jq`, and two that hold the plugin to
+  delegating rather than growing its own copy of the pattern list.
+
 ## 0.3.0 — 2026-08-22
 
 ### Added

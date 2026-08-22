@@ -192,17 +192,24 @@ purpose of having made them.
 | Claude Code | `PostToolUse` hook, matcher `Bash`, in `settings.json` — the redactor |
 | Codex | `PreToolUse` hook, matcher `^Bash$`, in `hooks.json` |
 | Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin |
+| Opencode | a `tool.execute.after` plugin — the redactor |
 
 Opencode needs both layers. `permission.bash` matches on a command prefix, so
 on its own it never sees `env | grep X`, `rtk env` or `a && env`. The plugin
 runs the real policy by calling the same `secrets-guard`, so there is one
 source of truth rather than two that drift.
 
-`secrets-redact` is wired for Claude Code only. Replacing a result after the
-tool has run needs `hookSpecificOutput.updatedToolOutput`, a documented Claude
-Code field; no verified equivalent exists in the Codex or Opencode hook
-contracts. A hook whose output is ignored is worse than no hook, because it
-reads as protection that is not there.
+`secrets-redact` reaches Claude Code and Opencode by different routes. Claude
+Code replaces the result through `hookSpecificOutput.updatedToolOutput`;
+Opencode hands a plugin a mutable `output`, so the masked string is written back
+in place. Both call the same CLI, in `--filter` mode for the plugin.
+
+**Codex cannot do this, and the reason is in its source.** `PostToolUseOutcome`
+(`codex-rs/hooks/src/events/post_tool_use.rs`) carries `should_block`,
+`additional_contexts` and `feedback_message` — and nothing that replaces the
+result. A Codex PostToolUse hook can comment on output it has already shown the
+model; it cannot take it back. Codex keeps the guard, which is the half that
+works there, and `install.sh` does not pretend otherwise.
 
 ## Documentation
 

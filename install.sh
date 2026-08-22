@@ -144,10 +144,12 @@ while IFS= read -r ide; do
     found=1
     say "── $ide ──"
 
-    # The opencode plugin is a file next to the configuration, not on PATH.
+    # The opencode plugins are files next to the configuration, not on PATH.
     if [ "$ide" = "opencode" ]; then
         install_file "$SRC/plugins/opencode/secrets-guard.ts" \
                      "$HOME/.config/opencode/plugins/secrets-guard.ts"
+        install_file "$SRC/plugins/opencode/secrets-redact.ts" \
+                     "$HOME/.config/opencode/plugins/secrets-redact.ts"
     fi
 
     # --with-rule matters for opencode only: it reads an instruction file just

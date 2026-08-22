@@ -157,6 +157,51 @@ else
     no "fails open on empty input" "it did not exit 0 silently"
 fi
 
+# ── --filter: the plain-text mode the Opencode plugin uses ──────────────────
+# The plugin skips the assignment when nothing changed, so the exit status is
+# part of the contract, not a detail: 0 masked, 1 untouched.
+filtered="$(printf 'croc --pass %s x\n' "$HEX" | bash "$TOOL" --filter; printf 'rc=%s' "$?")"
+if [ "$filtered" = "$(printf 'croc --pass <REDACTED:32> x\nrc=0')" ]; then
+    ok "--filter masks and reports exit 0"
+else
+    no "--filter masks and reports exit 0" "got: $filtered"
+fi
+
+untouched="$(printf 'md5 %s\n' "$HEX" | bash "$TOOL" --filter; printf 'rc=%s' "$?")"
+if [ "$untouched" = "$(printf 'md5 %s\nrc=1' "$HEX")" ]; then
+    ok "--filter passes a checksum through and reports exit 1"
+else
+    no "--filter passes a checksum through and reports exit 1" "got: $untouched"
+fi
+
+# --filter is the mode that must work on a machine without jq: the plugin runs
+# it directly, with no JSON on either side.
+nojq_filter="$(printf 'x --pass %s\n' "$HEX" |
+               PATH="/usr/bin:/bin" /bin/bash "$TOOL" --filter 2>/dev/null)"
+if printf '%s' "$nojq_filter" | grep -q 'REDACTED'; then
+    ok "--filter needs no jq"
+else
+    no "--filter needs no jq" "got: $nojq_filter"
+fi
+
+# ── the Opencode plugin must call this CLI, not reimplement it ──────────────
+PLUGIN="$SRC/plugins/opencode/secrets-redact.ts"
+if [ -f "$PLUGIN" ]; then
+    if grep -q 'secrets-redact --filter' "$PLUGIN"; then
+        ok "the Opencode plugin delegates to secrets-redact --filter"
+    else
+        no "the Opencode plugin delegates to the CLI" \
+           "no 'secrets-redact --filter' call in $PLUGIN — a second copy of the policy?"
+    fi
+    if grep -q 'tool.execute.after' "$PLUGIN"; then
+        ok "the Opencode plugin hooks tool.execute.after"
+    else
+        no "the Opencode plugin hooks tool.execute.after" "wrong hook, or renamed"
+    fi
+else
+    no "the Opencode plugin exists" "missing: $PLUGIN"
+fi
+
 # ── tier 1 must not drift away from safe-env ────────────────────────────────
 # The provider patterns are duplicated rather than shared: both files are
 # installed standalone onto PATH, and a shared include would be a third file

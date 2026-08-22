@@ -193,6 +193,7 @@ TAVILY_API_KEY=<REDACTED:57>
 | Claude Code | Хук `PostToolUse`, шаблон `Bash`, в `settings.json` — это `secrets-redact` |
 | Codex | Хук `PreToolUse`, шаблон `^Bash$`, в `hooks.json` |
 | Opencode | Запрещающие правила `permission.bash` **и** плагин `tool.execute.before` |
+| Opencode | Плагин `tool.execute.after` — это `secrets-redact` |
 
 Opencode требует обоих слоёв. `permission.bash` сравнивает начало строки
 команды, поэтому сам по себе он никогда не увидит `env | grep X`, `rtk env` или
@@ -200,11 +201,18 @@ Opencode требует обоих слоёв. `permission.bash` сравнив�
 `secrets-guard`, — так правило остаётся в одном месте вместо двух, которые со
 временем разойдутся.
 
-`secrets-redact` встраивается только в Claude Code. Чтобы заменить результат уже
-выполненного инструмента, нужно поле `hookSpecificOutput.updatedToolOutput` — оно
-описано в документации Claude Code, а в контрактах хуков Codex и Opencode
-проверенного аналога нет. Хук, вывод которого никто не читает, хуже отсутствия
-хука: он выглядит как защита, которой на самом деле нет.
+`secrets-redact` попадает в Claude Code и в Opencode разными путями. Claude Code
+заменяет результат через поле `hookSpecificOutput.updatedToolOutput`; Opencode
+передаёт плагину изменяемый `output`, и туда же записывается изменённая строка.
+Оба вызывают один и тот же CLI — плагин в режиме `--filter`.
+
+**В Codex этого сделать нельзя, и причина видна в его исходниках.** Структура
+`PostToolUseOutcome` (`codex-rs/hooks/src/events/post_tool_use.rs`) содержит
+`should_block`, `additional_contexts` и `feedback_message` — и ничего, чем
+заменить результат. Хук `PostToolUse` в Codex может прокомментировать вывод,
+который модель уже увидела, но не может его забрать. В Codex остаётся
+`secrets-guard` — та половина, которая там работает, — и `install.sh` не делает
+вид, что есть вторая.
 
 ## Документация
 

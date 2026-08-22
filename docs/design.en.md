@@ -152,9 +152,31 @@ options a receiver will need. The same shape turns up in `docker login`
 transcripts, in verbose `curl`, in any tool that reports the arguments it was
 handed.
 
-`secrets-redact` runs as a `PostToolUse` hook and replaces the result through
-`hookSpecificOutput.updatedToolOutput`, so the masked text is what reaches the
-model. Two tiers decide what to mask:
+`secrets-redact` gets in front of the model by whichever route the assistant
+offers. Claude Code: a `PostToolUse` hook that replaces the result through
+`hookSpecificOutput.updatedToolOutput`. Opencode: a `tool.execute.after` plugin,
+whose `output` is mutable by design, so the masked string is assigned back in
+place. One policy either way — the plugin shells out to the same CLI in
+`--filter` mode, which is plain text in and masked text out with no JSON and no
+`jq`.
+
+Codex is the exception, and not for lack of trying. Its `PostToolUseOutcome`
+(`codex-rs/hooks/src/events/post_tool_use.rs`) is
+
+```rust
+pub struct PostToolUseOutcome {
+    pub hook_events: Vec<HookCompletedEvent>,
+    pub should_block: bool,
+    pub additional_contexts: Vec<String>,
+    pub feedback_message: Option<String>,
+}
+```
+
+— block, add context, say something. Nothing replaces the result. A hook there
+could tell the model that the output it just read contained a password, which
+is not redaction; it is a second copy of the problem. Codex keeps the guard.
+
+Two tiers decide what to mask:
 
 **Tier 1, provider shapes.** `ghp_`, `glpat-`, `AKIA`, a JWT, a private key
 header, credentials inside a URL. These are unambiguous, so they are masked

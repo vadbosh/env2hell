@@ -82,7 +82,10 @@ while IFS= read -r ide; do
     else
         "$PY" "$SRC/lib/patch_config.py" "$ide" --remove || true
     fi
-    [ "$ide" = "opencode" ] && remove_file "$HOME/.config/opencode/plugins/secrets-guard.ts"
+    if [ "$ide" = "opencode" ]; then
+        remove_file "$HOME/.config/opencode/plugins/secrets-guard.ts"
+        remove_file "$HOME/.config/opencode/plugins/secrets-redact.ts"
+    fi
     remove_file "$(rule_target "$ide")"
 done < <(detect_ides)
 
