@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Install env2hell — Linux / macOS.
 #
-# Two commands go on PATH:
+# Three commands go on PATH:
 #   secrets-guard   the policy; assistants call it before every shell command
+#   secrets-redact  masks a secret that a command printed, after the fact
 #   safe-env        prints the environment with secret values masked
 #
 # Then each assistant found is wired to call the guard, and the house rule that
-# tells the model to reach for `safe-env` is installed alongside it.
+# tells the model to reach for `safe-env` is installed alongside it. The
+# redactor is wired for Claude Code only — see lib/patch_config.py for why.
 #
 #   ./install.sh                  install into every assistant found
 #   ./install.sh --dry-run        print what would happen, change nothing
 #   ./install.sh --ide claude     install into one assistant only
-#   ./install.sh --bin-dir D      put the two commands in D instead of ~/.local/bin
+#   ./install.sh --bin-dir D      put the commands in D instead of ~/.local/bin
 #   ./install.sh --no-rule        skip the documentation rule, wire the guard only
 #
 # Idempotent: re-running rewrites only what differs. A configuration file about
@@ -123,10 +125,11 @@ if ! command -v jq >/dev/null 2>&1; then
     warn "jq not found — not required, but useful for inspecting the result."
 fi
 
-# ── the two commands ────────────────────────────────────────────────────────
+# ── the commands ────────────────────────────────────────────────────────
 say "── commands ──"
-install_file "$SRC/bin/secrets-guard" "$BIN_DIR/secrets-guard" 755
-install_file "$SRC/bin/safe-env"      "$BIN_DIR/safe-env"      755
+install_file "$SRC/bin/secrets-guard"  "$BIN_DIR/secrets-guard"  755
+install_file "$SRC/bin/secrets-redact" "$BIN_DIR/secrets-redact" 755
+install_file "$SRC/bin/safe-env"       "$BIN_DIR/safe-env"       755
 
 case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
@@ -153,9 +156,11 @@ while IFS= read -r ide; do
     [ "$WITH_RULE" -eq 1 ] && rule_flag="--with-rule"
     if [ "$DRY_RUN" -eq 1 ]; then
         "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
+              --redact "$BIN_DIR/secrets-redact" \
               ${rule_flag:+"$rule_flag"} --dry-run || true
     else
         "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
+              --redact "$BIN_DIR/secrets-redact" \
               ${rule_flag:+"$rule_flag"} || true
     fi
 
@@ -190,6 +195,27 @@ allowed="$(probe '"echo hi"')"
 
 if [ "$blocked" = "2" ] && [ "$allowed" = "0" ]; then
     ok "  ok — the guard blocks a bare env and allows an ordinary command"
+
+    # The redactor has the opposite failure mode: it is silent when it works and
+    # silent when it is broken, so the probe checks both directions — a labelled
+    # password must be masked, a bare checksum of the same length must not.
+    redact="$BIN_DIR/secrets-redact"
+    if [ -x "$redact" ] && command -v jq >/dev/null 2>&1; then
+        hexval='deadbeefdeadbeefdeadbeefdeadbeef'
+        masked="$(printf '{"tool_response":{"stdout":"--pass %s"}}' "$hexval" |
+                  "$redact" 2>/dev/null | grep -c 'REDACTED' || true)"
+        kept="$(printf '{"tool_response":{"stdout":"md5 %s"}}' "$hexval" |
+                "$redact" 2>/dev/null | wc -c)"
+        if [ "$masked" -ge 1 ] && [ "$kept" -eq 0 ]; then
+            ok "  ok — the redactor masks a labelled password, leaves a checksum alone"
+        else
+            warn "  the redactor did not behave as expected (masked=$masked kept=$kept)"
+            warn "    run tests/test_redact.sh for the detail"
+        fi
+    elif [ -x "$redact" ]; then
+        warn "  secrets-redact installed, but jq is missing — it will do nothing"
+    fi
+
     say ""
     say "  Restart your assistant: hooks and plugins are read at start-up."
     say "  Then, in a shell it runs: safe-env        (values masked)"

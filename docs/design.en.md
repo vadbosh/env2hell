@@ -137,6 +137,61 @@ nothing at all.
 The blocking path is the narrow one: exit 2, with a message on stderr that the
 assistant shows to the model. Everything else lets the work continue.
 
+## After the fact — secrets-redact
+
+Everything above happens before a command runs, which fixes the whole class of
+accident where the assistant *reads* a secret. It cannot touch the other class:
+a command that *prints* one. There is nothing in the command line to inspect —
+
+```bash
+croc send report.pdf
+```
+
+— and the password appears only in the answer, because `croc` echoes the
+options a receiver will need. The same shape turns up in `docker login`
+transcripts, in verbose `curl`, in any tool that reports the arguments it was
+handed.
+
+`secrets-redact` runs as a `PostToolUse` hook and replaces the result through
+`hookSpecificOutput.updatedToolOutput`, so the masked text is what reaches the
+model. Two tiers decide what to mask:
+
+**Tier 1, provider shapes.** `ghp_`, `glpat-`, `AKIA`, a JWT, a private key
+header, credentials inside a URL. These are unambiguous, so they are masked
+wherever they appear. The pattern list is character-for-character the one in
+`safe-env`; `tests/test_redact.sh` diffs the two files and fails if they drift.
+
+**Tier 2, labelled values.** A high-entropy run is masked only when something
+on the same line calls it a secret — `--pass`, `--token`, `password=`,
+`api_key=`, `Authorization: Bearer`. The label is doing real work here. The
+password this hook was written for was 32 hex characters, and so is every md5
+in the session:
+
+```
+croc --relay host:9009 --pass deadbeefdeadbeefdeadbeefdeadbeef code-word
+md5sum: deadbeefdeadbeefdeadbeefdeadbeef  report.pdf
+```
+
+Identical strings, opposite verdicts. Masking bare hex would redact every
+checksum and commit hash the model needs to reason about, and a redactor that
+destroys ordinary output gets uninstalled exactly like a guard that blocks
+ordinary commands.
+
+The mask keeps the length — `<REDACTED:32>` — because the model usually needs
+to know *that* something was removed and how long it was, not what it was.
+
+### What it costs
+
+The hook fires after the tool has already run. The command executed, any side
+effect it had stands, and the assistant's telemetry records the original output.
+What is prevented is narrower and still worth having: the secret does not enter
+the model's context, and so does not enter the transcript the model writes, the
+summary it produces, or the memory store that indexes them.
+
+It also fails open, on the same reasoning as the guard: no `jq`, unparsable
+input, or a tool result with no `stdout`/`stderr` all mean exit 0 with no
+output, which leaves the result untouched.
+
 ## Why a rule file ships with it
 
 A denial on its own is not enough, and here is why.
@@ -186,8 +241,10 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
 
 ## What this does not do
 
-- It does not read command **output**. A program that prints its own
-  configuration, keys included, is outside its reach.
+- The guard does not read command **output**; `secrets-redact` does, but only
+  after the command has run, and only for values a label identifies. An
+  unlabelled secret that reads as ordinary text — a three-word passphrase, say
+  — passes through both.
 - It is not a sandbox. Someone determined to read a value can encode it,
   reverse it, or write it to a file first. The target is the ordinary accident,
   which is what actually happens.

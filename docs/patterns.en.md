@@ -55,6 +55,32 @@ trigger the other rules, so none of them fired. The `key.signature` row was
 added for exactly that shape, and it is why an unfamiliar token format is worth
 testing rather than assuming.
 
+## The same shapes in command output
+
+`safe-env` reads `NAME=value` pairs, so a shape can be tested against the value
+alone. `secrets-redact` reads whatever a command printed, where there is no such
+frame — and that changes which rules are safe.
+
+The named formats above carry over unchanged: `ghp_…` is a GitHub token wherever
+it appears. The generic fallbacks do not. "32 or more hex characters" is a fine
+rule for the right-hand side of `GITHUB_TOKEN=`; applied to free text it matches
+every md5sum, every git SHA, every content hash in the session.
+
+So in output the frame is rebuilt from a label on the same line:
+
+| Label | Example |
+|---|---|
+| `--pass`, `--password`, `--passphrase` | `croc --relay h:9009 --pass <REDACTED:32>` |
+| `--token`, `--secret`, `--api-key` | `deploy --token <REDACTED:40>` |
+| `password=`, `secret=`, `api_key=` | `DB_URL=…?password=<REDACTED:24>` |
+| `TOKEN:`, `Authorization: Bearer` | `Authorization: Bearer <REDACTED:180>` |
+| plurals and `-`/`_` spellings | `access_key`, `client-secret`, `credentials` |
+
+The value itself must still look like a secret: 16 or more characters from
+`A-Za-z0-9+/=_.~-`. Sixteen, not thirty-two, because the label has already done
+most of the work — an md5 is 32 and a git SHA is 40, so length on its own can
+never decide this question.
+
 ## Testing a format
 
 Never paste a live key to check. Construct one of the same shape:

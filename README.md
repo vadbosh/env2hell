@@ -43,6 +43,7 @@ is a gate.
 | Command | Purpose |
 |---|---|
 | `secrets-guard` | Denies a command before it runs. Assistants call it automatically. |
+| `secrets-redact` | Masks a secret a command printed, before the model reads it. |
 | `safe-env` | Prints the environment with secret values masked. What the model uses instead. |
 
 Plus a rule file (`rules/secrets-hygiene.md`) installed into each assistant, so
@@ -73,6 +74,38 @@ git commit -m "fix env parsing" # and here it is just a word in some text
 Those last two lines matter more than they look. A guard that cannot tell `env`
 the command from the same word in a directory name or a commit message blocks
 your ordinary work on day one, and then you switch it off.
+
+### What is masked after the fact
+
+The guard reads the command, so it cannot know what the command will print. A
+program handed a password prints that password back:
+
+```
+$ croc send report.pdf
+On the other computer, run:
+  croc --relay relay.example:9009 --pass <REDACTED:32> quiet-otter-lamp
+```
+
+`secrets-redact` replaced that value after `croc` had already printed it, and
+before the model read the result. What it masks:
+
+```
+--pass VALUE            password=VALUE          TOKEN: VALUE
+--token VALUE           api_key=VALUE           Authorization: Bearer VALUE
+ghp_… glpat-… AKIA…     eyJ….eyJ….              https://user:pw@host
+```
+
+What it deliberately leaves alone:
+
+```
+md5sum   deadbeefdeadbeefdeadbeefdeadbeef  report.pdf
+commit   feedfacefeedfacefeedfacefeedfacefeedface
+```
+
+An md5 is 32 characters and so was that relay password. Length cannot tell them
+apart, so the label decides: a high-entropy run is masked only when something on
+the same line calls it a password, a token, a key or a secret. Masking bare hex
+everywhere would redact every checksum and commit hash in the session.
 
 ## Install
 
@@ -156,6 +189,7 @@ purpose of having made them.
 | Assistant | Mechanism |
 |---|---|
 | Claude Code | `PreToolUse` hook, matcher `Bash`, in `settings.json` |
+| Claude Code | `PostToolUse` hook, matcher `Bash`, in `settings.json` — the redactor |
 | Codex | `PreToolUse` hook, matcher `^Bash$`, in `hooks.json` |
 | Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin |
 
@@ -163,6 +197,12 @@ Opencode needs both layers. `permission.bash` matches on a command prefix, so
 on its own it never sees `env | grep X`, `rtk env` or `a && env`. The plugin
 runs the real policy by calling the same `secrets-guard`, so there is one
 source of truth rather than two that drift.
+
+`secrets-redact` is wired for Claude Code only. Replacing a result after the
+tool has run needs `hookSpecificOutput.updatedToolOutput`, a documented Claude
+Code field; no verified equivalent exists in the Codex or Opencode hook
+contracts. A hook whose output is ignored is worse than no hook, because it
+reads as protection that is not there.
 
 ## Documentation
 
@@ -172,8 +212,13 @@ source of truth rather than two that drift.
 
 ## Limits
 
-- The guard sees a command **before** it runs. It does not read output, so a
-  program that prints a key on its own is not covered.
+- The guard sees a command **before** it runs, so it cannot know what the
+  command will print. `secrets-redact` covers that case, but only afterwards:
+  the command has already executed, and the telemetry the assistant sends
+  records the original output. What the model reads is masked; what the vendor
+  logged is not.
+- The redactor needs a label. An unlabelled secret that looks like ordinary text
+  — a passphrase of three English words, say — passes through untouched.
 - It is a filter, not a sandbox. It raises the cost of the common accident; it
   is not a defence against someone deliberately extracting a value.
 - A key already in the environment stays there. Assistants snapshot their

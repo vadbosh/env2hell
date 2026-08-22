@@ -4,9 +4,16 @@
 Each assistant stores the same intent in a different place:
 
     claude    ~/.claude/settings.json      hooks.PreToolUse[] entry, matcher "Bash"
+                                           hooks.PostToolUse[] entry, matcher "Bash"
     codex     ~/.codex/hooks.json          hooks.PreToolUse[] entry, matcher "^Bash$"
     opencode  ~/.config/opencode/opencode.json
                                            plugin[] entry + permission.bash deny rules
+
+secrets-redact is wired for Claude Code only. Replacing a tool result after the
+fact needs hookSpecificOutput.updatedToolOutput, which is a documented Claude
+Code field; the codex and opencode hook contracts have no equivalent that has
+been verified here, and a hook whose output is ignored is worse than none — it
+reads as protection that is not there.
 
 Opencode needs the two layers together. `permission.bash` matches on a command
 prefix, so on its own it never sees `env | grep X`, `rtk env` or `a && env`;
@@ -40,6 +47,9 @@ CONFIG = {
 }
 
 MATCHER = {"claude": "Bash", "codex": "^Bash$"}
+
+# Assistants whose hook contract can replace a tool result once it exists.
+REDACT_IDES = {"claude"}
 
 # Commands that print the whole environment, and the readers that would print a
 # file full of secrets. Kept here so the installer and the docs cannot drift.
@@ -146,6 +156,53 @@ def patch_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
     return changed
 
 
+def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[str]:
+    """The PostToolUse half: same shape as patch_hooks, different event.
+
+    Kept as its own function rather than a flag on patch_hooks because the two
+    are independent — an installation can carry the guard and not the redactor
+    (an assistant that cannot replace output), and removing one must not
+    disturb the other.
+    """
+    changed = []
+    hooks = data.setdefault("hooks", {})
+    post = hooks.setdefault("PostToolUse", [])
+
+    present = [
+        e for e in post
+        if any("secrets-redact" in str(h.get("command", ""))
+               for h in e.get("hooks", []))
+    ]
+
+    if remove:
+        for entry in present:
+            post.remove(entry)
+            changed.append("post-hook removed")
+        if not post:
+            hooks.pop("PostToolUse", None)
+        return changed
+
+    if present:
+        for entry in present:
+            for h in entry.get("hooks", []):
+                if "secrets-redact" in str(h.get("command", "")) and h["command"] != redact:
+                    h["command"] = redact
+                    changed.append(f"post-hook repointed to {redact}")
+        return changed
+
+    post.append({
+        "matcher": MATCHER[ide],
+        "hooks": [{
+            "type": "command",
+            "command": redact,
+            "timeout": 10,
+            "statusMessage": "secrets-redact...",
+        }],
+    })
+    changed.append("post-hook added")
+    return changed
+
+
 def patch_opencode(data: dict, remove: bool, with_rule: bool = False) -> list[str]:
     changed = []
     instructions = data.setdefault("instructions", [])
@@ -195,6 +252,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("ide", choices=sorted(CONFIG))
     ap.add_argument("--guard", default="", help="absolute path to the secrets-guard CLI")
+    ap.add_argument("--redact", default="",
+                    help="absolute path to the secrets-redact CLI (Claude Code only)")
     ap.add_argument("--remove", action="store_true")
     ap.add_argument("--with-rule", action="store_true",
                     help="also register the rule file (opencode needs it listed)")
@@ -220,6 +279,8 @@ def main() -> int:
         changed = patch_opencode(data, args.remove, args.with_rule)
     else:
         changed = patch_hooks(args.ide, data, args.guard, args.remove)
+        if args.ide in REDACT_IDES and (args.redact or args.remove):
+            changed += patch_post_hooks(args.ide, data, args.redact, args.remove)
 
     if not changed:
         print("    = already current")

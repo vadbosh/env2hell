@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.3.0 — 2026-08-22
+
+### Added
+
+- **`secrets-redact` — the output half of the pair.** `secrets-guard` reads a
+  command before it runs, so it cannot know what the command will print. A
+  program handed a password prints that password back:
+
+  ```
+  $ croc send report.pdf
+  On the other computer, run:
+    croc --relay relay.example:9009 --pass deadbeefdeadbeefdeadbeefdeadbeef quiet-otter-lamp
+  ```
+
+  Nothing in that command line says a secret is coming. The new hook runs on
+  `PostToolUse` and replaces the result through
+  `hookSpecificOutput.updatedToolOutput`, so the masked text is what reaches
+  the model.
+
+  Two tiers. Provider shapes (`ghp_`, `glpat-`, `AKIA`, JWT, private key
+  headers, credentials in a URL) are masked anywhere — that list is
+  character-for-character the one in `safe-env`, and `tests/test_redact.sh`
+  diffs the two files so they cannot drift apart unnoticed. A high-entropy run
+  with no recognisable prefix is masked only when a label on the same line
+  calls it a secret: `--pass`, `--token`, `password=`, `Authorization: Bearer`.
+
+  The label is not decoration. The password this was written for was 32 hex
+  characters, exactly like every md5sum in the session; masking bare hex would
+  redact every checksum and commit hash the model needs. Both directions are
+  asserted in the tests.
+
+  Wired for Claude Code only. Replacing a result after the fact needs
+  `updatedToolOutput`, and no verified equivalent exists in the Codex or
+  Opencode hook contracts. A hook whose output is ignored reads as protection
+  that is not there.
+
+  It fails open on the same reasoning as the guard: no `jq`, unparsable input,
+  or a tool result carrying no `stdout`/`stderr` all mean exit 0 with no
+  output.
+
+### Changed
+
+- `install.sh` puts three commands on PATH instead of two, and verifies the
+  redactor in both directions — a labelled password masked, a bare checksum
+  left alone. `uninstall.sh` removes it.
+- The "Limits" section of both READMEs no longer says output is out of reach.
+  It now says what is actually true: output is covered, but only after the
+  command has run, only for labelled values, and the assistant's telemetry
+  still records the original.
+
 ## 0.2.1 — 2026-08-20
 
 ### Fixed

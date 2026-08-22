@@ -4,7 +4,7 @@
 #   ./uninstall.sh              remove everything this installer added
 #   ./uninstall.sh --dry-run    print what would happen, change nothing
 #   ./uninstall.sh --ide claude remove from one assistant only
-#   ./uninstall.sh --keep-bin   unwire the assistants, leave the two commands
+#   ./uninstall.sh --keep-bin   unwire the assistants, leave the commands in place
 #
 # The backups made at install time are left in place: they are the only copy of
 # whatever the configuration held before, and deleting them here would defeat
@@ -89,6 +89,7 @@ done < <(detect_ides)
 if [ "$KEEP_BIN" -eq 0 ]; then
     say "── commands ──"
     remove_file "$BIN_DIR/secrets-guard"
+    remove_file "$BIN_DIR/secrets-redact"
     remove_file "$BIN_DIR/safe-env"
 fi
 
