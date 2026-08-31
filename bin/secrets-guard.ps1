@@ -176,7 +176,16 @@ foreach ($rawSub in $rawSubs) {
     # Only the printing commands, and only when they are the command — a
     # `grep echo` prints nothing of its own.
     if ($rawSub -notmatch '(^|\s)(echo|printf)(\s|$)') { continue }
-    if ($rawSub -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
+    # Single-quoted spans are removed before the match. Inside them the shell
+    # performs no expansion at all, so `$SECRET` there is four literal
+    # characters — and writing a template that contains one is ordinary work:
+    #
+    #     printf 'key: ${secret_name}\n' > deploy.yaml
+    #
+    # Double quotes are deliberately left in place: `echo "$HW_SECRET_KEY"`
+    # does expand, and that is the case this rule exists for.
+    $sqStripped = $rawSub -replace "'[^']*'", 'Q'
+    if ($sqStripped -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
         Deny '[secrets-guard] Blocked: printing a credential-named variable puts its value in the transcript unlabelled, where redaction cannot see it. Use `safe-env` and filter by name to check it is set without printing it.'
     }
 }

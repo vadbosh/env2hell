@@ -164,5 +164,15 @@ check 0 'safe-env | grep HW_SECRET_KEY'
 check 0 'rg "TOKEN" src/'
 
 echo
+echo "allowed — single quotes expand nothing, so a template is not a leak"
+# Writing a file that contains ${secret_name} is ordinary work. The guard used
+# to read the raw text and deny it, which caught real editing sessions.
+check 0 "printf 'key: \${secret_name}\n' > deploy.yaml"
+check 0 "echo 'set \$API_KEY in the env first'"
+check 0 "printf '%s\n' 'password=\${db_password}'"
+# ...but the double-quoted form still expands, and is still denied
+check 2 'echo "${db_password}"'
+
+echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
