@@ -142,5 +142,27 @@ check 2 'cat ~/.ssh/id_rsa | head -5'
 check 2 'head -5 .env | grep TOKEN'
 
 echo
+echo "denied — printing a credential-named variable, the one hand-operated leak"
+# The value arrives alone on its line with no label beside it, so redaction has
+# nothing to key on: tier 2 needs a label, tier 1 needs a provider prefix, and a
+# Huawei key has neither.
+check 2 'echo "$HW_SECRET_KEY"'
+check 2 'echo $HW_ACCESS_KEY'
+check 2 'echo "${GITHUB_TOKEN}"'
+check 2 'printf "%s\n" "$AWS_SECRET_ACCESS_KEY"'
+check 2 'echo "$MY_API_KEY"'
+check 2 'cd /tmp && echo "$OS_SECRET_KEY"'
+check 2 'echo "$db_password"'
+
+echo
+echo "allowed — an ordinary variable, and the word echo where it prints nothing"
+check 0 'echo "$PATH"'
+check 0 'echo "$HOME/bin"'
+check 0 'echo "$ANTHROPIC_MODEL"'
+check 0 'grep -r echo /etc/profile.d'
+check 0 'safe-env | grep HW_SECRET_KEY'
+check 0 'rg "TOKEN" src/'
+
+echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

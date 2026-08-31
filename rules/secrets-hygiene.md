@@ -11,12 +11,29 @@ once, because `rg` filters *lines*, and a line is `NAME=value`.
 ```bash
 safe-env                      # whole environment, secret values masked
 safe-env | grep MODEL         # filter it — values are already masked
-echo "$ANTHROPIC_MODEL"       # one variable, when you know the name
+echo "$ANTHROPIC_MODEL"       # one variable, when the NAME is not a credential
 printenv PATH                 # one variable, explicit
 ```
 
 Never: bare `env`, `printenv`, `export -p`, bare `set`, bare `declare`,
 `history`, or `cat` of `~/.bashrc` / `.env` / `*.pem` / `/proc/*/environ`.
+
+**And never print a variable whose name says "credential"** — `echo
+"$HW_SECRET_KEY"`, `printf '%s' "$GITHUB_TOKEN"`. This is denied too, and the
+reason differs from the dump case. The value arrives alone on its line with no
+label beside it, so redaction has nothing to work with: its labelled tier needs
+a name on the same line, and its provider tier needs a recognisable prefix. A
+Huawei access key is 20 characters of uppercase and digits, its secret 40 of
+base62 — shapes that equally describe a git SHA or a build identifier, so no
+pattern can take them without masking half of ordinary output. Shape cannot
+decide it. The name can, which is why the refusal happens here rather than
+after the fact.
+
+To check whether such a variable is set, ask without printing it:
+
+```bash
+safe-env | grep HW_SECRET_KEY   # shows the name, masks the value
+```
 
 `env VAR=value some-command` is fine — that *sets* a variable for one command,
 it does not dump anything.

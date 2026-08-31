@@ -70,6 +70,27 @@ for form in "password=$HEX" "TOKEN: $HEX" "--token $HEX" "api_key=$HEX"; do
     fi
 done
 
+# Cloud keys with no provider prefix. Tier 1 could never take them by shape:
+# 20 uppercase characters or 40 of base62 also describe a git SHA and half the
+# identifiers in ordinary output. The variable name is the only signal, so it
+# has to be in the label list.
+for form in "HW_ACCESS_KEY=$HEX" "HW_SECRET_KEY: $HEX" "OS_SECRET_KEY=$HEX" \
+    "HUAWEICLOUD_SECRET_KEY=$HEX"; do
+    if printf '%s' "$(hook_out "$form")" | grep -q "$HEX"; then
+        no "masks $form" "the raw value reached the output"
+    else
+        ok "masks ${form%%[=: ]*} — named as a cloud key, not shaped like one"
+    fi
+done
+
+# The counterpart: a bare SHA must still come through, or every `git rev-parse`
+# in the session turns into <REDACTED:40>.
+if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then
+    ok "leaves a bare git SHA alone"
+else
+    no "leaves a bare git SHA alone" "got: $(hook_out "$SHA")"
+fi
+
 if printf '%s' "$(hook_out "export GH=$GHP")" | grep -q 'ghp_0123456789'; then
     no "masks a provider token with no label" "the raw value reached the output"
 else

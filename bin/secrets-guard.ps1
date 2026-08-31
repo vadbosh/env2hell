@@ -158,4 +158,27 @@ foreach ($rawSub in $rawSubs) {
     }
 }
 
+# ── printing a credential-named variable ───────────────────────────────────
+# The message above offers `echo "$VAR"` as the safe way to read one value, and
+# for PATH or EDITOR it is. For a variable whose NAME says "credential" it is
+# the last hand-operated way to put a key into the transcript: the value comes
+# out bare, alone on its line, with no label beside it. secrets-redact's tier 2
+# has nothing to key on there, and tier 1 cannot recognise a provider-less
+# token — a Huawei access key is 20 characters of uppercase and digits, its
+# secret 40 of base62, shapes indistinguishable from a git SHA. Shape cannot
+# decide it; the name can, and the name is visible here.
+$credName = '(PASS|PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY' +
+            '|AUTH_?TOKEN|ACCESS_?KEY|SECRET_?KEY|CLIENT_?SECRET' +
+            '|PRIVATE_?KEY|CREDENTIAL)'
+
+foreach ($rawSub in $rawSubs) {
+    if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
+    # Only the printing commands, and only when they are the command — a
+    # `grep echo` prints nothing of its own.
+    if ($rawSub -notmatch '(^|\s)(echo|printf)(\s|$)') { continue }
+    if ($rawSub -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
+        Deny '[secrets-guard] Blocked: printing a credential-named variable puts its value in the transcript unlabelled, where redaction cannot see it. Use `safe-env` and filter by name to check it is set without printing it.'
+    }
+}
+
 exit 0
