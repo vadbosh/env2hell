@@ -240,11 +240,15 @@ fi
 # ── the Opencode plugin must call this CLI, not reimplement it ──────────────
 PLUGIN="$SRC/plugins/opencode/secrets-redact.ts"
 if [ -f "$PLUGIN" ]; then
-    if grep -q 'secrets-redact --filter' "$PLUGIN"; then
-        ok "the Opencode plugin delegates to secrets-redact --filter"
+    # The binary name is resolved into a variable, because a plugin shell may
+    # not carry ~/.local/bin on PATH — so match the `--filter` call itself
+    # rather than the literal command name. What this asserts is unchanged:
+    # the plugin delegates instead of carrying its own copy of the policy.
+    if grep -qE '(secrets-redact|\$\{redact\}) --filter' "$PLUGIN"; then
+        ok "the Opencode plugin delegates to the CLI with --filter"
     else
         no "the Opencode plugin delegates to the CLI" \
-           "no 'secrets-redact --filter' call in $PLUGIN — a second copy of the policy?"
+           "no '--filter' call in $PLUGIN — a second copy of the policy?"
     fi
     if grep -q 'tool.execute.after' "$PLUGIN"; then
         ok "the Opencode plugin hooks tool.execute.after"

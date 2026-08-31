@@ -23,11 +23,21 @@ import type { Plugin } from "@opencode-ai/plugin"
 // that runs a program is this one's.
 
 export const SecretsRedactPlugin: Plugin = async ({ $ }) => {
+  // Same PATH trap as in secrets-guard.ts: a plugin shell does not read the
+  // login profile, so ~/.local/bin need not be on PATH even where the CLI is
+  // installed and working. Falling back to the install directory keeps the
+  // redactor from disabling itself into a console.warn nobody reads.
+  const fallback = `${process.env.HOME ?? ""}/.local/bin/secrets-redact`
+  let redact = "secrets-redact"
   try {
     await $`which secrets-redact`.quiet()
   } catch {
-    console.warn("[secrets-redact] binary not found in PATH — plugin disabled")
-    return {}
+    const probe = await $`test -x ${fallback}`.quiet().nothrow()
+    if (probe.exitCode !== 0) {
+      console.warn(`[secrets-redact] not found in PATH nor at ${fallback} — plugin disabled`)
+      return {}
+    }
+    redact = fallback
   }
 
   // Hooks receive an immutable input and a mutable output, so the masked text
@@ -35,7 +45,7 @@ export const SecretsRedactPlugin: Plugin = async ({ $ }) => {
   // then the string is left alone rather than reassigned to itself.
   const mask = async (text: unknown): Promise<string | undefined> => {
     if (typeof text !== "string" || text === "") return undefined
-    const res = await $`printf %s ${text} | secrets-redact --filter`.quiet().nothrow()
+    const res = await $`printf %s ${text} | ${redact} --filter`.quiet().nothrow()
     if (res.exitCode !== 0) return undefined
     return String(res.stdout)
   }
