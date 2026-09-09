@@ -83,5 +83,28 @@ else
     no "masks an Atlassian API token" "the ATATT token reached the output"
 fi
 
+# A classic Atlassian token is 24 characters of letters and digits — the shape
+# of a build id. Only the variable's name says it is a secret.
+named="$(MYTEST_JIRA_API_TOKEN='K3nT8sQ2vB7hL9wR4dY6' \
+         MYTEST_TOKENIZERS_PARALLELISM='false' \
+         MYTEST_TOKEN_FILE='/etc/creds/jira' \
+         bash "$TOOL" 2>/dev/null)"
+if printf '%s' "$named" | grep -q '^MYTEST_JIRA_API_TOKEN=<REDACTED:'; then
+    ok "masks a shapeless value whose name says credential"
+else
+    no "masks a shapeless value whose name says credential" \
+       "the 24-character token reached the output"
+fi
+if printf '%s' "$named" | grep -qx 'MYTEST_TOKENIZERS_PARALLELISM=false'; then
+    ok "leaves a flag alone, whatever its name contains"
+else
+    no "leaves a flag alone, whatever its name contains" "false was masked"
+fi
+if printf '%s' "$named" | grep -qx 'MYTEST_TOKEN_FILE=/etc/creds/jira'; then
+    ok "leaves a path alone — configuration, not a secret"
+else
+    no "leaves a path alone — configuration, not a secret" "the path was masked"
+fi
+
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

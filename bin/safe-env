@@ -39,6 +39,25 @@ BEGIN {
   RE = RE "|eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\."
   RE = RE "|://[^/:@ ]+:[^/:@ ]{3,}@"
   RE = RE "|BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY"
+
+  # What the NAME says, for the values whose shape says nothing. A classic
+  # Atlassian API token is 24 characters of letters and digits — the same shape
+  # as a build id, a short hash or a bucket name — so no pattern above can take
+  # it without masking half of an ordinary environment. The name can.
+  CRED = "(PASS|PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY"
+  CRED = CRED "|AUTH_?TOKEN|ACCESS_?KEY|SECRET_?KEY|CLIENT_?SECRET"
+  CRED = CRED "|PRIVATE_?KEY|CREDENTIAL)"
+}
+# A credential-named variable whose value could be one. Three things keep this
+# from masking half the environment: a path is configuration, not a secret; so
+# is a flag; and nothing shorter than eight characters is worth hiding, which
+# is what keeps TOKENIZERS_PARALLELISM=false readable.
+function named_credential(key, val) {
+  if (toupper(key) !~ CRED)                     return 0
+  if (length(val) < 8)                          return 0
+  if (val ~ /^[~.]?\//)                         return 0     # /path, ./path, ~/path
+  if (tolower(val) ~ /^(true|false|yes|no|on|off|[0-9]+)$/) return 0
+  return 1
 }
 {
   key = $1
@@ -52,5 +71,7 @@ BEGIN {
   if (val ~ /^[A-Za-z0-9]{20,}\.[A-Za-z0-9_-]{8,}$/)                      { print key "=" mask(val); next }
   if (val ~ /[A-Za-z0-9_-]{40,}/ && val ~ /[A-Za-z0-9_-]\.[A-Za-z0-9_-]/)  { print key "=" mask(val); next }
   if (val ~ /^[A-Za-z0-9_-]{40,}$/)                                       { print key "=" mask(val); next }
+  # last, so a shape match still wins and the name only decides the leftovers
+  if (named_credential(key, val))                                         { print key "=" mask(val); next }
   print key "=" val
 }'

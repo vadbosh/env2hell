@@ -53,11 +53,29 @@ function Test-Secret([string]$Value) {
     return $false
 }
 
+# What the NAME says, for the values whose shape says nothing. A classic
+# Atlassian API token is 24 characters of letters and digits — the shape of a
+# build id or a short hash — so no pattern can take it without masking half an
+# ordinary environment. A path stays visible because it is configuration, so
+# does a flag, and nothing under eight characters is worth hiding.
+$credName = '(PASS|PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY' +
+            '|AUTH_?TOKEN|ACCESS_?KEY|SECRET_?KEY|CLIENT_?SECRET' +
+            '|PRIVATE_?KEY|CREDENTIAL)'
+
+function Test-NamedCredential([string]$Name, [string]$Value) {
+    if ($Name.ToUpper() -notmatch $credName)          { return $false }
+    if ($Value.Length -lt 8)                          { return $false }
+    if ($Value -match '^[~.]?[\\/]')                  { return $false }
+    if ($Value -match '^[A-Za-z]:[\\/]')              { return $false }
+    if ($Value -match '^(?i)(true|false|yes|no|on|off|\d+)$') { return $false }
+    return $true
+}
+
 Get-ChildItem Env: | Sort-Object Name | ForEach-Object {
     $value = [string]$_.Value
     if ([string]::IsNullOrEmpty($value)) {
         "$($_.Name)="
-    } elseif (Test-Secret $value) {
+    } elseif ((Test-Secret $value) -or (Test-NamedCredential $_.Name $value)) {
         "$($_.Name)=<REDACTED:$($value.Length)>"
     } else {
         "$($_.Name)=$value"

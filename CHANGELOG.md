@@ -10,6 +10,15 @@
   so it matched neither the hex rule nor the `[A-Za-z0-9_-]{40,}` one. Added to
   `safe-env`, `secrets-redact` and the PowerShell port.
 
+- **`safe-env` masks by variable name when the value's shape says nothing.** A
+  classic Atlassian token is 24 characters of letters and digits — the shape of
+  a build id, a short hash, a bucket name — so no pattern can claim it without
+  masking half an ordinary environment. The name can, and it is visible. Three
+  exemptions keep the output readable: a path is configuration
+  (`TOKEN_FILE=/etc/creds/jira`), so is a flag
+  (`TOKENIZERS_PARALLELISM=false`), and nothing under eight characters is worth
+  hiding. Shape still decides first; the name only rules on what is left.
+
 ### Fixed
 
 - **A credential handed to another command is no longer read as printing it.**
