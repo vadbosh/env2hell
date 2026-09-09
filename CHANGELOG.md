@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.2 — 2026-09-09
+
+### Added
+
+- **Atlassian API tokens are masked.** `ATATT…` — the prefix Jira and
+  Confluence Cloud issue — followed by a base64url body and a trailing
+  checksum. The generic fallbacks missed it: the body carries `-`, `_` and `=`,
+  so it matched neither the hex rule nor the `[A-Za-z0-9_-]{40,}` one. Added to
+  `safe-env`, `secrets-redact` and the PowerShell port.
+
+### Fixed
+
+- **A credential handed to another command is no longer read as printing it.**
+  `printf "%s" "$(curl -u "$user:$API_TOKEN" …)"` was denied: the guard saw a
+  printing command and a credential-named variable on the same line, though
+  what reaches the output is curl's response. Command substitutions are now
+  peeled innermost-first and each body judged on its own, so the case above
+  passes while `echo "$(printf %s "$API_TOKEN")"` stays denied.
+
 ## 0.5.1 — 2026-08-22
 
 ### Fixed

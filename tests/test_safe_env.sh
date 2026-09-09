@@ -72,5 +72,16 @@ else
     no "masks an unprefixed high-entropy value" "the hex run reached the output"
 fi
 
+# Atlassian API token: ATATT prefix, base64url body, trailing checksum. The
+# generic fallbacks miss it — the body carries '-', '_' and '=' — so it needs
+# its own pattern.
+atl="$(MYTEST_ATL='ATATT3xFfGF0YULg6ygsuaRoh0oRsRcmtUdOrLkiAeWFqtnR5wQ72GF0odDd-kw3qD0v-Bl_noPqLIZU1va5C4D6yv2zLss8Zh9RJixqpilKBitzF5vP-RFQnrKasP0RRwOVg3FIdHRsjdmKoIwOv=A5DDAXXD' \
+              bash "$TOOL" 2>/dev/null)"
+if printf '%s' "$atl" | grep -q '^MYTEST_ATL=<REDACTED:'; then
+    ok "masks an Atlassian API token"
+else
+    no "masks an Atlassian API token" "the ATATT token reached the output"
+fi
+
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -174,5 +174,15 @@ check 0 "printf '%s\n' 'password=\${db_password}'"
 check 2 'echo "${db_password}"'
 
 echo
+echo "allowed — a credential handed to another command, not printed"
+# The value goes to curl inside a command substitution, and what the printing
+# command emits is curl's output. Denying this taught nothing and cost a
+# working command a rewrite.
+check 0 'printf "%s" "$(curl -s -u "$E:$JIRA_API_TOKEN" https://example.com)"'
+check 0 'echo "$(cat /tmp/x)" && curl -H "Authorization: $API_TOKEN" https://x'
+# ...but a printing command *inside* the substitution is still printing it
+check 2 'echo "$(printf %s "$JIRA_API_TOKEN")"'
+
+echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
