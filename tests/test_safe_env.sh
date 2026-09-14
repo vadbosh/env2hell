@@ -57,10 +57,18 @@ else
     no "reports the masked variable by name" "MYTEST_TOKEN missing or not marked REDACTED"
 fi
 
+# The failure message carries what was actually seen. This assertion failed
+# once, on 2026-09-14, in a session whose environment is no longer reachable,
+# and "altered or dropped" was not enough to tell the two apart: a masked line
+# and a missing line are different bugs with different causes, and the CRED
+# name list cannot match MYTEST_PLAIN at all, so neither reading was obvious.
+# Report the line, or its absence, rather than the verdict alone.
 if printf '%s' "$planted" | grep -qx 'MYTEST_PLAIN=hello-world'; then
     ok "leaves a non-secret value alone"
 else
-    no "leaves a non-secret value alone" "MYTEST_PLAIN was altered or dropped"
+    seen="$(printf '%s' "$planted" | grep '^MYTEST_PLAIN=' || true)"
+    no "leaves a non-secret value alone" \
+       "expected the exact line MYTEST_PLAIN=hello-world; got ${seen:-<no MYTEST_PLAIN line at all>} out of $(printf '%s' "$planted" | grep -c .) lines"
 fi
 
 # A long hex string is a secret even without a recognisable prefix.
