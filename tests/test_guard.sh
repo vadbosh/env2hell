@@ -184,5 +184,38 @@ check 0 'echo "$(cat /tmp/x)" && curl -H "Authorization: $API_TOKEN" https://x'
 check 2 'echo "$(printf %s "$JIRA_API_TOKEN")"'
 
 echo
+echo "structure — no early-exit grep behind a pipe, anywhere in the shipped code"
+# `set -o pipefail` plus `printf '%s' "$x" | grep -q PATTERN` is a race, and it
+# fails in the unsafe direction. `grep -q` exits on the first match; the printf
+# feeding it then dies of SIGPIPE with status 141; pipefail makes 141 the status
+# of the whole pipeline — so a *successful* match reads as a failure.
+#
+# Measured 2026-09-14: test_safe_env.sh failed 17 times in 120 runs, on six
+# different assertions, always with byte-identical data — one diagnostic printed
+# "expected MYTEST_PLAIN=hello-world; got MYTEST_PLAIN=hello-world". At 200 KB
+# it stops being a race: 200 misses out of 200.
+#
+# In the tests that was noise. In bin/secrets-guard it was a hole: the same
+# construct drove the loop that strips nested command substitutions and both
+# checks inside it, so under the race the guard skipped the strip and allowed a
+# command it exists to deny. Short command lines make it rare, and rare is the
+# wrong guarantee for a gate.
+#
+# A here-string has no writer to kill, so the hazard is gone by construction.
+# This check is what keeps it gone.
+# `[^|]|` and not `|`: a plain pipe, never the second bar of `||`, where the
+# grep that follows is a command in its own right and has nothing feeding it.
+# Comment lines are dropped too — this very paragraph names the construct.
+offenders="$(cd "$SRC" && grep -rn -- '[^|]|[^|]*grep  *-[A-Za-z]*q' \
+             bin tools tests 2>/dev/null | grep -v ':[[:space:]]*#' || true)"
+if [ -z "$offenders" ]; then
+    pass=$((pass + 1)); printf '  ok    no pipe feeds a grep that can exit early\n'
+else
+    fail=$((fail + 1))
+    printf '  FAIL  no pipe feeds a grep that can exit early — use `grep -q P <<< "$v"`:\n'
+    printf '%s\n' "$offenders" | sed 's/^/        /'
+fi
+
+echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

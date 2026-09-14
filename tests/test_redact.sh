@@ -50,20 +50,20 @@ hook_out () {
 
 # ── what must be masked ─────────────────────────────────────────────────────
 got="$(hook_out "croc --relay h:9009 --pass $HEX code-word")"
-if printf '%s' "$got" | grep -q "$HEX"; then
+if grep -q "$HEX" <<< "$got"; then
     no "masks a labelled password" "the raw value reached the output"
 else
     ok "masks a labelled password"
 fi
 
-if printf '%s' "$got" | grep -q -- '--pass <REDACTED:32>'; then
+if grep -q -- '--pass <REDACTED:32>' <<< "$got"; then
     ok "keeps the label so the model can see what was removed"
 else
     no "keeps the label" "expected '--pass <REDACTED:32>', got: $got"
 fi
 
 for form in "password=$HEX" "TOKEN: $HEX" "--token $HEX" "api_key=$HEX"; do
-    if printf '%s' "$(hook_out "$form")" | grep -q "$HEX"; then
+    if grep -q "$HEX" <<< "$(hook_out "$form")"; then
         no "masks $form" "the raw value reached the output"
     else
         ok "masks ${form%%[=: ]*} regardless of separator"
@@ -76,7 +76,7 @@ done
 # has to be in the label list.
 for form in "HW_ACCESS_KEY=$HEX" "HW_SECRET_KEY: $HEX" "OS_SECRET_KEY=$HEX" \
     "HUAWEICLOUD_SECRET_KEY=$HEX"; do
-    if printf '%s' "$(hook_out "$form")" | grep -q "$HEX"; then
+    if grep -q "$HEX" <<< "$(hook_out "$form")"; then
         no "masks $form" "the raw value reached the output"
     else
         ok "masks ${form%%[=: ]*} — named as a cloud key, not shaped like one"
@@ -91,7 +91,7 @@ else
     no "leaves a bare git SHA alone" "got: $(hook_out "$SHA")"
 fi
 
-if printf '%s' "$(hook_out "export GH=$GHP")" | grep -q 'ghp_0123456789'; then
+if grep -q 'ghp_0123456789' <<< "$(hook_out "export GH=$GHP")"; then
     no "masks a provider token with no label" "the raw value reached the output"
 else
     ok "masks a provider token with no label"
@@ -120,7 +120,7 @@ fi
 # ── it must not reformat what it passes through ─────────────────────────────
 with_nl="$(hook_out "--pass $HEX\n" | od -An -c | tr -s ' ' | tail -c 4)"
 if [ "$with_nl" = '\n
-' ] || printf '%s' "$with_nl" | grep -q 'n'; then
+' ] || grep 'n' <<< "$with_nl" >/dev/null; then
     ok "keeps a trailing newline that was there"
 else
     no "keeps a trailing newline that was there" "tail was [$with_nl]"
@@ -176,9 +176,9 @@ GLPAT='glpat-0123456789abcdefghijklmnopqrstuvwx'
 # the JSON string, which is invalid JSON, and the hook would fail open — the
 # test would then pass for the wrong reason on a hook that never looked at it.
 bare="$(printf '{"tool_response":"Exit code 1\\nhttps://oauth2:%s@example/x.git\\n"}' "$GLPAT" | bash "$TOOL")"
-if printf '%s' "$bare" | jq -r '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep -q "$GLPAT"; then
+if printf '%s' "$bare" | jq -r '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks a bare-string tool_response" "the raw token reached the output"
-elif printf '%s' "$bare" | jq -re '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep -q '<REDACTED:'; then
+elif printf '%s' "$bare" | jq -re '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
     ok "masks a bare-string tool_response — the shape a failed command takes"
 else
     no "masks a bare-string tool_response" "no replacement was produced at all"
@@ -191,9 +191,9 @@ else
 fi
 
 blob="$(printf '{"tool_response":{"is_error":true,"content":"https://oauth2:%s@example/x.git"}}' "$GLPAT" | bash "$TOOL")"
-if printf '%s' "$blob" | jq -r '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep -q "$GLPAT"; then
+if printf '%s' "$blob" | jq -r '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks a {content:…} tool_response" "the raw token reached the output"
-elif printf '%s' "$blob" | jq -re '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep -q '<REDACTED:'; then
+elif printf '%s' "$blob" | jq -re '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
     ok "masks a {content:…} tool_response"
 else
     no "masks a {content:…} tool_response" "no replacement was produced at all"
@@ -212,9 +212,9 @@ else
 fi
 
 read_shape="$(printf '{"tool_response":{"type":"text","file":{"filePath":"/tmp/x.env","totalLines":1,"content":"GITLAB=%s\\n"}}}' "$GLPAT" | bash "$TOOL")"
-if printf '%s' "$read_shape" | jq -r '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep -q "$GLPAT"; then
+if printf '%s' "$read_shape" | jq -r '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks the Read tool's {file:{content}} result" "the raw token reached the output"
-elif printf '%s' "$read_shape" | jq -re '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep -q '<REDACTED:'; then
+elif printf '%s' "$read_shape" | jq -re '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
     ok "masks the Read tool's {file:{content}} result"
 else
     no "masks the Read tool's {file:{content}} result" "no replacement was produced at all"
@@ -238,16 +238,16 @@ bigout="$(printf '{"tool_response":{"stdout":"%s TOKEN=%s","stderr":""}}' "$big"
           bash "$TOOL" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout // empty' 2>/dev/null)"
 if [ -z "$bigout" ]; then
     no "masks a 200 KB stdout" "the hook produced no replacement — it failed open on size"
-elif printf '%s' "$bigout" | grep -q "$GHP"; then
+elif grep -q "$GHP" <<< "$bigout"; then
     no "masks a 200 KB stdout" "the raw value reached the output"
 else
     ok "masks a 200 KB stdout — past the 128 KB argument limit"
 fi
 
 warned="$(printf '{"tool_response":"https://oauth2:%s@example/x.git"}' "$GLPAT" | bash "$TOOL" --warn-only)"
-if printf '%s' "$warned" | grep -q "$GLPAT"; then
+if grep -q "$GLPAT" <<< "$warned"; then
     no "--warn-only never repeats the value" "the token is in the warning"
-elif printf '%s' "$warned" | jq -re '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'credential-shaped'; then
+elif printf '%s' "$warned" | jq -re '.hookSpecificOutput.additionalContext' 2>/dev/null | grep 'credential-shaped' >/dev/null; then
     ok "--warn-only reports a bare-string result"
 else
     no "--warn-only reports a bare-string result" "no warning was produced"
@@ -291,7 +291,7 @@ fi
 # it directly, with no JSON on either side.
 nojq_filter="$(printf 'x --pass %s\n' "$HEX" |
                PATH="/usr/bin:/bin" /bin/bash "$TOOL" --filter 2>/dev/null)"
-if printf '%s' "$nojq_filter" | grep -q 'REDACTED'; then
+if grep -q 'REDACTED' <<< "$nojq_filter"; then
     ok "--filter needs no jq"
 else
     no "--filter needs no jq" "got: $nojq_filter"
@@ -310,7 +310,7 @@ else
 fi
 
 # The whole point is a warning that does not repeat what it is warning about.
-if printf '%s' "$warn" | grep -q "$HEX"; then
+if grep -q "$HEX" <<< "$warn"; then
     no "--warn-only never repeats the value" "the secret is in the warning itself"
 else
     ok "--warn-only never repeats the value"

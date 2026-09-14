@@ -45,13 +45,13 @@ fi
 planted="$(MYTEST_TOKEN='ghp_0123456789abcdefghijklmnopqrstuvwxyzAB' \
            MYTEST_PLAIN='hello-world' bash "$TOOL" 2>/dev/null)"
 
-if printf '%s' "$planted" | grep -q 'ghp_0123456789'; then
+if grep -q 'ghp_0123456789' <<< "$planted"; then
     no "masks a github token" "the raw value reached the output"
 else
     ok "masks a github token"
 fi
 
-if printf '%s' "$planted" | grep -q '^MYTEST_TOKEN=<REDACTED:'; then
+if grep -q '^MYTEST_TOKEN=<REDACTED:' <<< "$planted"; then
     ok "reports the masked variable by name"
 else
     no "reports the masked variable by name" "MYTEST_TOKEN missing or not marked REDACTED"
@@ -63,7 +63,7 @@ fi
 # and a missing line are different bugs with different causes, and the CRED
 # name list cannot match MYTEST_PLAIN at all, so neither reading was obvious.
 # Report the line, or its absence, rather than the verdict alone.
-if printf '%s' "$planted" | grep -qx 'MYTEST_PLAIN=hello-world'; then
+if grep -qx 'MYTEST_PLAIN=hello-world' <<< "$planted"; then
     ok "leaves a non-secret value alone"
 else
     seen="$(printf '%s' "$planted" | grep '^MYTEST_PLAIN=' || true)"
@@ -74,7 +74,7 @@ fi
 # A long hex string is a secret even without a recognisable prefix.
 unprefixed="$(MYTEST_HEX='0123456789abcdef0123456789abcdef0123456789' \
               bash "$TOOL" 2>/dev/null)"
-if printf '%s' "$unprefixed" | grep -q '^MYTEST_HEX=<REDACTED:'; then
+if grep -q '^MYTEST_HEX=<REDACTED:' <<< "$unprefixed"; then
     ok "masks an unprefixed high-entropy value"
 else
     no "masks an unprefixed high-entropy value" "the hex run reached the output"
@@ -85,7 +85,7 @@ fi
 # its own pattern.
 atl="$(MYTEST_ATL='ATATT3xFfGF0YULg6ygsuaRoh0oRsRcmtUdOrLkiAeWFqtnR5wQ72GF0odDd-kw3qD0v-Bl_noPqLIZU1va5C4D6yv2zLss8Zh9RJixqpilKBitzF5vP-RFQnrKasP0RRwOVg3FIdHRsjdmKoIwOv=A5DDAXXD' \
               bash "$TOOL" 2>/dev/null)"
-if printf '%s' "$atl" | grep -q '^MYTEST_ATL=<REDACTED:'; then
+if grep -q '^MYTEST_ATL=<REDACTED:' <<< "$atl"; then
     ok "masks an Atlassian API token"
 else
     no "masks an Atlassian API token" "the ATATT token reached the output"
@@ -97,18 +97,18 @@ named="$(MYTEST_JIRA_API_TOKEN='K3nT8sQ2vB7hL9wR4dY6' \
          MYTEST_TOKENIZERS_PARALLELISM='false' \
          MYTEST_TOKEN_FILE='/etc/creds/jira' \
          bash "$TOOL" 2>/dev/null)"
-if printf '%s' "$named" | grep -q '^MYTEST_JIRA_API_TOKEN=<REDACTED:'; then
+if grep -q '^MYTEST_JIRA_API_TOKEN=<REDACTED:' <<< "$named"; then
     ok "masks a shapeless value whose name says credential"
 else
     no "masks a shapeless value whose name says credential" \
        "the 24-character token reached the output"
 fi
-if printf '%s' "$named" | grep -qx 'MYTEST_TOKENIZERS_PARALLELISM=false'; then
+if grep -qx 'MYTEST_TOKENIZERS_PARALLELISM=false' <<< "$named"; then
     ok "leaves a flag alone, whatever its name contains"
 else
     no "leaves a flag alone, whatever its name contains" "false was masked"
 fi
-if printf '%s' "$named" | grep -qx 'MYTEST_TOKEN_FILE=/etc/creds/jira'; then
+if grep -qx 'MYTEST_TOKEN_FILE=/etc/creds/jira' <<< "$named"; then
     ok "leaves a path alone — configuration, not a secret"
 else
     no "leaves a path alone — configuration, not a secret" "the path was masked"
