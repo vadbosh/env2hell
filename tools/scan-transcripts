@@ -5,8 +5,8 @@
 # the ones already on disk: a transcript is written as the session runs, it is
 # never rewritten, and a value that leaked before the hook covered that case is
 # still sitting there. Measured 2026-09-14 on the machine this was written for:
-# six distinct credential-shaped values across six transcripts, the oldest from
-# July, none of them known to anyone until the files were looked at.
+# 381 such lines across 35 transcripts, the oldest from May, none of them known
+# to anyone until the files were looked at.
 #
 # Rotation is the only fix for a leaked value, and rotation needs a list. This
 # produces the list.
@@ -57,7 +57,7 @@ while [ $# -gt 0 ]; do
         --include-stores) stores=include ;;
         --path|-p)  shift; [ $# -gt 0 ] || { echo "--path needs a directory" >&2; exit 2; }
                     paths+=("$1") ;;
-        -h|--help)  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)          echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift

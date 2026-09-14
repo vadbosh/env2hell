@@ -123,8 +123,12 @@ git clone <этот-репозиторий> env2hell && cd env2hell
 
 ### Windows
 
-Ни Python, ни Git Bash не требуются: у `secrets-guard` есть версия на
-PowerShell, и установщик написан на нём же.
+Ни Python, ни Git Bash не требуются: версии на PowerShell есть у
+`secrets-guard`, `secrets-redact` и `safe-env`, установщик написан на нём же.
+До 14 сентября 2026 года порт был только у стража — установка на Windows
+получала запрет и не получала маскирования, поэтому всё, что программа
+печатала в ответ, доходило до модели как есть. Все три порта проверяются теми
+же наборами тестов, что и версии для POSIX, — флагом `--pwsh`.
 
 ```powershell
 .\install.ps1
@@ -184,7 +188,7 @@ TAVILY_API_KEY=<REDACTED:57>
 /root/.claude/projects/-wp/dc1cc19c…jsonl  — 16 line(s) with a credential
   /root/.claude/projects/-wp/dc1cc19c…jsonl:214: …url":"https<REDACTED:41>@gitlab…
 
-scanned 454 file(s); 33 with findings, 301 line(s) in total
+scanned 454 file(s); 35 with findings, 381 line(s) in total
 2 token store(s) skipped — auth.json and the like hold a
 credential by design. --include-stores to scan them too.
 ```
@@ -216,13 +220,22 @@ credential by design. --include-stores to scan them too.
 
 ```bash
 ./tests/test_guard.sh          # страж, версия для POSIX
-./tests/test_guard.sh --pwsh   # те же случаи против версии для PowerShell
 ./tests/test_redact.sh         # маскирование: шаблоны, формы результата, объём
 ./tests/test_safe_env.sh       # safe-env
 ./tests/test_scan.sh           # сканер транскриптов
+
+./tests/test_guard.sh    --pwsh   # те же случаи против версий для PowerShell
+./tests/test_redact.sh   --pwsh
+./tests/test_safe_env.sh --pwsh
 ```
 
 Все наборы дают `failed 0`.
+
+Половину с `--pwsh` надо прогонять при любой правке с любой стороны. Иначе две
+реализации одного правила расходятся молча: `secrets-guard.ps1` потерял проход
+по подстановкам команд, который есть в версии для POSIX, начал запрещать
+рабочую команду — и заметить это было нечем, пока набор тестов не направили на
+него.
 
 ## Удаление
 
@@ -242,6 +255,7 @@ credential by design. --include-stores to scan them too.
 |---|---|
 | Claude Code | Хук `PreToolUse`, шаблон `Bash`, в `settings.json` |
 | Claude Code | Хук `PostToolUse`, шаблон `Bash\|Read\|Grep`, в `settings.json` — это `secrets-redact` |
+| Windows | те же два хука, с `"shell": "powershell"`, указывают на порты `.ps1` |
 | Codex | Хук `PreToolUse`, шаблон `^Bash$`, в `hooks.json` |
 | Codex | Хук `PostToolUse`, шаблон `^Bash$` — `secrets-redact`, только предупреждение |
 | Opencode | Запрещающие правила `permission.bash` **и** плагин `tool.execute.before` |

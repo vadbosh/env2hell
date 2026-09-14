@@ -122,8 +122,11 @@ Requires Python 3.8+ (the assistants' configuration files are JSON).
 
 ### Windows
 
-No Python and no Git Bash needed — the guard has a PowerShell port and the
-installer is PowerShell too.
+No Python and no Git Bash needed — the guard, the redactor and `safe-env` all
+have PowerShell ports, and the installer is PowerShell too. Until 2026-09-14
+only the guard did, so a Windows install had a gate and no net: whatever a
+program printed back reached the model untouched. The three ports are held to
+the same test suites as the POSIX originals, with `--pwsh`.
 
 ```powershell
 .\install.ps1
@@ -182,7 +185,7 @@ sitting in it. Rotation is the only fix, and rotation needs a list.
 /root/.claude/projects/-wp/dc1cc19c…jsonl  — 16 line(s) with a credential
   /root/.claude/projects/-wp/dc1cc19c…jsonl:214: …url":"https<REDACTED:41>@gitlab…
 
-scanned 454 file(s); 33 with findings, 301 line(s) in total
+scanned 454 file(s); 35 with findings, 381 line(s) in total
 2 token store(s) skipped — auth.json and the like hold a
 credential by design. --include-stores to scan them too.
 ```
@@ -212,13 +215,21 @@ something you run when you have a reason to, not something the assistant calls.
 
 ```bash
 ./tests/test_guard.sh          # the POSIX guard
-./tests/test_guard.sh --pwsh   # the same cases against the PowerShell port
 ./tests/test_redact.sh         # the redactor: patterns, result shapes, size
 ./tests/test_safe_env.sh       # safe-env
 ./tests/test_scan.sh           # the transcript scanner
+
+./tests/test_guard.sh    --pwsh   # the same cases against the PowerShell ports
+./tests/test_redact.sh   --pwsh
+./tests/test_safe_env.sh --pwsh
 ```
 
 All report `failed 0`.
+
+Run the `--pwsh` half whenever either side changes. Two implementations of one
+rule drift in silence otherwise: `secrets-guard.ps1` lost the
+command-substitution pass the POSIX guard had and denied a working command, and
+nothing ran to notice until the suite was pointed at it.
 
 ## Uninstall
 
@@ -238,6 +249,7 @@ purpose of having made them.
 |---|---|
 | Claude Code | `PreToolUse` hook, matcher `Bash`, in `settings.json` |
 | Claude Code | `PostToolUse` hook, matcher `Bash\|Read\|Grep`, in `settings.json` — the redactor |
+| Windows | the same two hooks, registered with `"shell": "powershell"` and pointing at the `.ps1` ports |
 | Codex | `PreToolUse` hook, matcher `^Bash$`, in `hooks.json` |
 | Codex | `PostToolUse` hook, matcher `^Bash$` — the redactor, warning only |
 | Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin |
