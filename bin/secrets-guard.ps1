@@ -185,6 +185,26 @@ foreach ($rawSub in $rawSubs) {
     # Double quotes are deliberately left in place: `echo "$HW_SECRET_KEY"`
     # does expand, and that is the case this rule exists for.
     $sqStripped = $rawSub -replace "'[^']*'", 'Q'
+    # A command substitution is a different command, and its arguments are not
+    # this one's output. `echo "$(curl -u "$E:$API_TOKEN" ...)"` prints what
+    # curl returned, not the token — denying it teaches nothing and costs a
+    # rewrite of a working command. Innermost-first, so nesting collapses; each
+    # body is checked on its own, which keeps `echo "$(printf '%s' "$TOKEN")"`
+    # caught.
+    #
+    # The POSIX guard has had this since the rule was written; the port did not,
+    # and denied the curl line above. A guard that blocks ordinary work is a
+    # guard someone switches off, so a false denial is not the harmless
+    # direction to fail in.
+    $cmdSub = [regex]'\$\([^()]*\)'
+    while ($sqStripped -match '\$\([^()]*\)') {
+        $inner = [regex]::Match($sqStripped, '\$\(([^()]*)\)').Groups[1].Value
+        if ($inner -match '(^|\s)(echo|printf)(\s|$)' -and
+            $inner -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
+            Deny '[secrets-guard] Blocked: printing a credential-named variable puts its value in the transcript unlabelled, where redaction cannot see it. Use `safe-env` and filter by name to check it is set without printing it.'
+        }
+        $sqStripped = $cmdSub.Replace($sqStripped, 'CMDSUB', 1)
+    }
     if ($sqStripped -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
         Deny '[secrets-guard] Blocked: printing a credential-named variable puts its value in the transcript unlabelled, where redaction cannot see it. Use `safe-env` and filter by name to check it is set without printing it.'
     }
