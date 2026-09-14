@@ -212,16 +212,31 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
     hooks = data.setdefault("hooks", {})
     post = hooks.setdefault("PostToolUse", [])
 
-    present = [
-        e for e in post
-        if any("secrets-redact" in str(h.get("command", ""))
-               for h in e.get("hooks", []))
-    ]
+    # The notice entry below is also a secrets-redact command on PostToolUse,
+    # and it is not this one: it warns rather than replaces, and carries its own
+    # matcher. Telling them apart by the flag keeps each idempotent.
+    def _is_replace(entry):
+        cmds = [str(h.get("command", "")) for h in entry.get("hooks", [])
+                if "secrets-redact" in str(h.get("command", ""))]
+        if not cmds:
+            return False
+        # Only Claude Code has a second, warn-only entry to tell this one from.
+        # Everywhere else the redactor's own command *is* the warn-only one, and
+        # reading the flag as "not mine" made the entry invisible to its own
+        # patcher: every run appended another copy. Measured 2026-09-14 on
+        # Codex, three identical PostToolUse entries after two runs.
+        if ide != "claude":
+            return True
+        return not all(c.endswith("--warn-only") for c in cmds)
+
+    present = [e for e in post if _is_replace(e)]
 
     if remove:
-        for entry in present:
-            post.remove(entry)
-            changed.append("post-hook removed")
+        for entry in list(post):
+            if any("secrets-redact" in str(h.get("command", ""))
+                   for h in entry.get("hooks", [])):
+                post.remove(entry)
+                changed.append("post-hook removed")
         if not post:
             hooks.pop("PostToolUse", None)
         return changed
@@ -251,6 +266,82 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
         }],
     })
     changed.append("post-hook added")
+    return changed
+
+
+NOTICE_MATCHER = "Edit|Write|mcp__.*"
+
+# A failure carries its output in one `error` string whatever the tool, and
+# nothing is rebuilt from it, so there is no reason to narrow this one: a failed
+# `Edit` on a .env or a failed MCP call quotes the same credentials a failed
+# shell command does.
+FAILURE_MATCHER = "Bash|Read|Grep|Edit|Write|mcp__.*"
+
+
+def patch_notice_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[str]:
+    """Tools whose result carries a secret in a shape not worth rewriting.
+
+    `Read` and `Grep` hand over one string, and the hook replaces it. `Edit`
+    does not: its result carries the file in four places — `originalFile`,
+    `oldString`, `newString` and every line of `structuredPatch[].lines` — and
+    `Write` adds `content` beside `originalFile`. An MCP result is an array of
+    content blocks whose schema belongs to the server, not to Claude Code.
+
+    Masking one of those fields and leaving the next would read as coverage
+    while the same secret sits one key along, and rebuilding all of them means
+    guessing at schemas this hook does not own. A mangled tool result is worse
+    than an unmasked one — it is wrong in a way nothing downstream can detect.
+
+    So this entry only warns. Detection runs recursive descent over every string
+    in the result, which is safe precisely because nothing is rebuilt: an
+    unfamiliar schema costs a false positive at worst.
+
+    Editing a `.env` is ordinary work, and it is the case this covers.
+    """
+    if ide != "claude":
+        return []
+
+    changed = []
+    hooks = data.setdefault("hooks", {})
+    post = hooks.setdefault("PostToolUse", [])
+    wanted = f"{redact} --warn-only"
+
+    present = [
+        e for e in post
+        if any(str(h.get("command", "")).endswith("--warn-only")
+               and "secrets-redact" in str(h.get("command", ""))
+               for h in e.get("hooks", []))
+    ]
+
+    if remove:
+        for entry in present:
+            post.remove(entry)
+            changed.append("notice-hook removed")
+        if not post:
+            hooks.pop("PostToolUse", None)
+        return changed
+
+    if present:
+        for entry in present:
+            if entry.get("matcher") != NOTICE_MATCHER:
+                entry["matcher"] = NOTICE_MATCHER
+                changed.append(f"notice-hook matcher set to {NOTICE_MATCHER}")
+            for h in entry.get("hooks", []):
+                if "secrets-redact" in str(h.get("command", "")) and h["command"] != wanted:
+                    h["command"] = wanted
+                    changed.append("notice-hook repointed")
+        return changed
+
+    post.append({
+        "matcher": NOTICE_MATCHER,
+        "hooks": [{
+            "type": "command",
+            "command": wanted,
+            "timeout": 10,
+            "statusMessage": "secrets-redact...",
+        }],
+    })
+    changed.append("notice-hook added")
     return changed
 
 
@@ -298,9 +389,9 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
 
     if present:
         for entry in present:
-            if entry.get("matcher") != REDACT_MATCHER[ide]:
-                entry["matcher"] = REDACT_MATCHER[ide]
-                changed.append(f"failure-hook matcher set to {REDACT_MATCHER[ide]}")
+            if entry.get("matcher") != FAILURE_MATCHER:
+                entry["matcher"] = FAILURE_MATCHER
+                changed.append(f"failure-hook matcher set to {FAILURE_MATCHER}")
             for h in entry.get("hooks", []):
                 if "secrets-redact" in str(h.get("command", "")) and h["command"] != wanted:
                     h["command"] = wanted
@@ -308,7 +399,7 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
         return changed
 
     fail.append({
-        "matcher": REDACT_MATCHER[ide],
+        "matcher": FAILURE_MATCHER,
         "hooks": [{
             "type": "command",
             "command": wanted,
@@ -404,6 +495,8 @@ def main() -> int:
             # result, so `args.redact` unadorned would be a hook that produces
             # a reply the harness throws away.
             changed += patch_failure_hooks(
+                args.ide, data, args.redact or "", args.remove)
+            changed += patch_notice_hooks(
                 args.ide, data, args.redact or "", args.remove)
 
     if not changed:

@@ -182,19 +182,29 @@ function Get-Field($Object, [string]$Name) {
 # which command produced it — both would put a second copy in the very
 # transcript being warned about.
 if ($mode -eq '--warn-only') {
-    $text = ''
-    if ($errText -is [string]) { $text = $errText }
-    if ($resp -is [string]) {
-        $text = $resp
-    } elseif ($null -ne $resp) {
-        foreach ($n in 'output', 'stdout', 'stderr', 'content') {
-            $v = Get-Field $resp $n
-            if ($v -is [string]) { $text += $v }
+    # Every string anywhere in the result, plus the failure event's top-level
+    # `error`. Detection can afford a recursive walk where replacement cannot:
+    # nothing is rebuilt here, so an unfamiliar schema costs a false positive at
+    # worst, never a mangled result. An Edit result carries the file in four
+    # places and an MCP result is an array of content blocks whose schema
+    # belongs to the server — enumerating those fields would miss the next one.
+    function Get-Strings($Node) {
+        if ($Node -is [string]) { return @($Node) }
+        $out = @()
+        if ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [string]) {
+            foreach ($item in $Node) { $out += Get-Strings $item }
+            return $out
         }
-        $f = Get-Field $resp 'file'
-        $fc = Get-Field $f 'content'
-        if ($fc -is [string]) { $text += $fc }
+        if ($Node -is [psobject]) {
+            foreach ($prop in $Node.PSObject.Properties) { $out += Get-Strings $prop.Value }
+        }
+        return $out
     }
+
+    $parts = @()
+    if ($errText -is [string]) { $parts += $errText }
+    if ($null -ne $resp)       { $parts += Get-Strings $resp }
+    $text = ($parts -join "`n")
     if ($text -eq '') { exit 0 }
     $null = Edit-Text $text
     if ($script:Hits -le 0) { exit 0 }
