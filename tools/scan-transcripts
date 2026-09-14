@@ -15,6 +15,7 @@
 #   scan-transcripts --path DIR      scan a directory of your own
 #   scan-transcripts --quiet         per-file counts, no excerpts
 #   scan-transcripts --files         only the names of files with findings
+#   scan-transcripts --include-stores   auth.json and friends too
 #
 # Exit status: 0 nothing found, 1 findings, 2 could not run. So it fits a cron
 # line or a CI step without parsing the output.
@@ -47,11 +48,13 @@ done
 }
 
 mode=full
+stores=skip
 paths=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --quiet|-q) mode=quiet ;;
-        --files|-l) mode=files ;;
+        --quiet|-q)       mode=quiet ;;
+        --files|-l)       mode=files ;;
+        --include-stores) stores=include ;;
         --path|-p)  shift; [ $# -gt 0 ] || { echo "--path needs a directory" >&2; exit 2; }
                     paths+=("$1") ;;
         -h|--help)  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -59,6 +62,22 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+# An assistant's own token store is not a leak. `auth.json` and its siblings
+# exist to hold a credential; finding one there is the file working. Reporting
+# them anyway costs more than it saves — a report with a dozen standing entries
+# is one nobody reads, and the real finding hides among them.
+#
+# Skipped by name, not by absolute path: the directories differ per platform
+# and per install, the file names do not. `--include-stores` puts them back,
+# which is what you want when the question is "which credentials does this
+# machine hold" rather than "what has leaked".
+is_store () {
+    case "${1##*/}" in
+        auth.json|account.json|credentials.json|.credentials.json) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 
 # The stores this machine might have. A missing one is not an error — most
 # machines run one assistant, not three.
@@ -106,8 +125,13 @@ END { print c + 0 }
 total_files=0
 total_hits=0
 hit_files=0
+skipped_stores=0
 
 while IFS= read -r f; do
+    if [ "$stores" = skip ] && is_store "$f"; then
+        skipped_stores=$((skipped_stores + 1))
+        continue
+    fi
     total_files=$((total_files + 1))
     # A file with nothing secret-shaped costs one pass and no temporary copy.
     "$REDACT" --filter < "$f" > "$tmp/masked" 2>/dev/null
@@ -135,6 +159,10 @@ done < <(find "${paths[@]}" -type f \
 if [ "$mode" != files ]; then
     printf '\nscanned %d file(s); %d with findings, %d line(s) in total\n' \
         "$total_files" "$hit_files" "$total_hits"
+    if [ "$skipped_stores" -gt 0 ]; then
+        printf '%d token store(s) skipped — auth.json and the like hold a\n' "$skipped_stores"
+        printf 'credential by design. --include-stores to scan them too.\n'
+    fi
     if [ "$hit_files" -gt 0 ]; then
         printf '\nEvery value above is already on disk and may already be in a\n'
         printf 'backup or a search index. Rotate them; do not reason about who\n'

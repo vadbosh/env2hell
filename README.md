@@ -163,14 +163,62 @@ TAVILY_API_KEY=<REDACTED:57>
 The length is kept because it distinguishes two different keys and reveals
 nothing usable.
 
+## What has already leaked
+
+The hooks stop a secret from reaching the model. They can do nothing about the
+ones already on disk: a transcript is written as the session runs, it is never
+rewritten, and a value that leaked before the hook covered that case is still
+sitting in it. Rotation is the only fix, and rotation needs a list.
+
+```bash
+./tools/scan-transcripts                    # every store this machine has
+./tools/scan-transcripts --quiet            # per-file counts, no excerpts
+./tools/scan-transcripts --files            # names only, for a pipeline
+./tools/scan-transcripts --path DIR         # somewhere of your own
+./tools/scan-transcripts --include-stores   # auth.json and friends too
+```
+
+```
+/root/.claude/projects/-wp/dc1cc19c…jsonl  — 16 line(s) with a credential
+  /root/.claude/projects/-wp/dc1cc19c…jsonl:214: …url":"https<REDACTED:41>@gitlab…
+
+scanned 454 file(s); 33 with findings, 301 line(s) in total
+2 token store(s) skipped — auth.json and the like hold a
+credential by design. --include-stores to scan them too.
+```
+
+It reads Claude Code, Codex, Opencode and rtk's tee logs. Three things about
+it are deliberate:
+
+- **it never prints the value.** Every excerpt is cut from the *masked* copy of
+  the line, so the report shows `<REDACTED:41>` and its surroundings. A tool
+  that reports a leak by repeating it has made a second one, into the
+  transcript of whoever ran the scan.
+- **detection is `secrets-redact --filter`**, the same code path the hook uses.
+  A copy of the patterns here would drift within a release, and a scanner that
+  disagrees with the guard reports clean on exactly the values the guard has
+  just learned to catch.
+- **an assistant's own token store is skipped.** `auth.json` holds a credential
+  because that is its job; a standing entry in every report is how a report
+  stops being read. The skip is counted, not hidden.
+
+Exit status is the interface — `0` nothing found, `1` findings, `2` could not
+run — so it fits a cron line or a CI step with no output parsing.
+
+The tool stays in the checkout. It is not installed onto `PATH`, because it is
+something you run when you have a reason to, not something the assistant calls.
+
 ## Verify
 
 ```bash
-./tests/test_guard.sh          # 47 cases against the POSIX guard
-./tests/test_guard.sh --pwsh   # the same 47 against the PowerShell port
+./tests/test_guard.sh          # the POSIX guard
+./tests/test_guard.sh --pwsh   # the same cases against the PowerShell port
+./tests/test_redact.sh         # the redactor: patterns, result shapes, size
+./tests/test_safe_env.sh       # safe-env
+./tests/test_scan.sh           # the transcript scanner
 ```
 
-Both report `passed 47, failed 0`.
+All report `failed 0`.
 
 ## Uninstall
 
@@ -189,7 +237,7 @@ purpose of having made them.
 | Assistant | Mechanism |
 |---|---|
 | Claude Code | `PreToolUse` hook, matcher `Bash`, in `settings.json` |
-| Claude Code | `PostToolUse` hook, matcher `Bash`, in `settings.json` — the redactor |
+| Claude Code | `PostToolUse` hook, matcher `Bash\|Read\|Grep`, in `settings.json` — the redactor |
 | Codex | `PreToolUse` hook, matcher `^Bash$`, in `hooks.json` |
 | Codex | `PostToolUse` hook, matcher `^Bash$` — the redactor, warning only |
 | Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin |
@@ -199,6 +247,14 @@ Opencode needs both layers. `permission.bash` matches on a command prefix, so
 on its own it never sees `env | grep X`, `rtk env` or `a && env`. The plugin
 runs the real policy by calling the same `secrets-guard`, so there is one
 source of truth rather than two that drift.
+
+**The two matchers differ on purpose.** The guard inspects a command line
+before it runs, which has no meaning for a tool that is not a shell. The
+redactor inspects a result, and a result carrying a credential need not have
+come from a shell at all: `Read` on a `.env`, an `id_rsa` or a kubeconfig hands
+the file over verbatim, and `Grep` returns the matching lines. Reading a secret
+needs no shell, so for a while the most direct route to one was the only route
+left uncovered.
 
 `secrets-redact` reaches Claude Code and Opencode by different routes. Claude
 Code replaces the result through `hookSpecificOutput.updatedToolOutput`;
