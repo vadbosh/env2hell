@@ -2,6 +2,7 @@
 # Behaviour tests for secrets-redact: the PostToolUse half of the pair.
 #
 #   ./tests/test_redact.sh               test the copy in ../bin
+#   ./tests/test_redact.sh --pwsh        test the PowerShell port instead
 #   ./tests/test_redact.sh --tool PATH   test an installed copy
 #
 # Two properties carry the whole design and are easy to lose in a later edit:
@@ -17,11 +18,15 @@ set -uo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOL="$SRC/bin/secrets-redact"
+RUNNER="bash"
+PORT="posix"
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --pwsh) TOOL="$SRC/bin/secrets-redact.ps1"
+                RUNNER="pwsh -NoProfile -File"; PORT="pwsh" ;;
         --tool) TOOL="${2:-}"; shift ;;
-        -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -29,6 +34,10 @@ done
 
 [ -e "$TOOL" ] || { echo "secrets-redact not found: $TOOL" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "these tests need jq" >&2; exit 2; }
+
+# $RUNNER is a command plus its flags and has to split into words.
+# shellcheck disable=SC2086
+run_tool () { $RUNNER "$TOOL" "$@"; }
 
 pass=0
 fail=0
@@ -45,7 +54,7 @@ GHP='ghp_0123456789abcdefghijklmnopqrstuvwxyzAB'
 # Prints nothing when the hook declines to replace anything.
 hook_out () {
     printf '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_response":{"stdout":"%s","stderr":"","interrupted":false,"isImage":false}}' "$1" |
-        bash "$TOOL" | jq -j 'try (.hookSpecificOutput.updatedToolOutput.stdout // empty)'
+        run_tool | jq -j 'try (.hookSpecificOutput.updatedToolOutput.stdout // empty)'
 }
 
 # ── what must be masked ─────────────────────────────────────────────────────
@@ -62,26 +71,51 @@ else
     no "keeps the label" "expected '--pass <REDACTED:32>', got: $got"
 fi
 
-for form in "password=$HEX" "TOKEN: $HEX" "--token $HEX" "api_key=$HEX"; do
-    if grep -q "$HEX" <<< "$(hook_out "$form")"; then
-        no "masks $form" "the raw value reached the output"
+# A silent hook is not a masked value. hook_out prints nothing when the hook
+# declines to replace anything, so "the raw value is not in this empty string"
+# scored as a pass — and two real defects sat behind that green for months:
+#
+#   TOKEN: 6310…      never masked at all. awk matches case-sensitively and the
+#                     label list is lower case, so only `token:` was caught —
+#                     while uppercase is how a token appears in an env dump, a
+#                     config echo, or a CI log.
+#   password=6310…    masked together with its label, as <REDACTED:41>. VALUE
+#                     admits `=`, so the old "value is the longest suffix"
+#                     reading swallowed `password=` too.
+#
+# Assert all three things: a replacement was issued, the value is gone, and the
+# label survived it. Any one of them alone can pass on a broken hook.
+check_labelled () {                     # <line> <label that must survive>
+    local line="$1" label="$2" out
+    out="$(hook_out "$line")"
+    if [ -z "$out" ]; then
+        no "masks $label" "the hook issued no replacement at all"
+    elif grep -q "$HEX" <<< "$out"; then
+        no "masks $label" "the raw value reached the output"
+    elif ! grep -qF -- "$label" <<< "$out"; then   # `--` or `--token` is a flag
+        no "masks $label" "the label was masked along with the value: $out"
     else
-        ok "masks ${form%%[=: ]*} regardless of separator"
+        ok "masks $label, keeping the label readable"
     fi
-done
+}
+
+check_labelled "password=$HEX"  'password='
+check_labelled "TOKEN: $HEX"    'TOKEN:'
+check_labelled "Token: $HEX"    'Token:'
+check_labelled "TOKEN=$HEX"     'TOKEN='
+check_labelled "--token $HEX"   '--token'
+check_labelled "--PASS $HEX"    '--PASS'
+check_labelled "api_key=$HEX"   'api_key='
 
 # Cloud keys with no provider prefix. Tier 1 could never take them by shape:
 # 20 uppercase characters or 40 of base62 also describe a git SHA and half the
 # identifiers in ordinary output. The variable name is the only signal, so it
-# has to be in the label list.
-for form in "HW_ACCESS_KEY=$HEX" "HW_SECRET_KEY: $HEX" "OS_SECRET_KEY=$HEX" \
-    "HUAWEICLOUD_SECRET_KEY=$HEX"; do
-    if grep -q "$HEX" <<< "$(hook_out "$form")"; then
-        no "masks $form" "the raw value reached the output"
-    else
-        ok "masks ${form%%[=: ]*} — named as a cloud key, not shaped like one"
-    fi
-done
+# has to be in the label list — and these names are written in upper case
+# everywhere they appear, which is what made the case bug expensive.
+check_labelled "HW_ACCESS_KEY=$HEX"          'HW_ACCESS_KEY='
+check_labelled "HW_SECRET_KEY: $HEX"         'HW_SECRET_KEY:'
+check_labelled "OS_SECRET_KEY=$HEX"          'OS_SECRET_KEY='
+check_labelled "HUAWEICLOUD_SECRET_KEY=$HEX" 'HUAWEICLOUD_SECRET_KEY='
 
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
@@ -141,7 +175,7 @@ else
 fi
 
 # ── the replacement must stay a valid tool result ───────────────────────────
-full="$(printf '{"tool_response":{"stdout":"--pass %s","stderr":"","interrupted":true,"isImage":false}}' "$HEX" | bash "$TOOL")"
+full="$(printf '{"tool_response":{"stdout":"--pass %s","stderr":"","interrupted":true,"isImage":false}}' "$HEX" | run_tool)"
 if printf '%s' "$full" | jq -e '.hookSpecificOutput.updatedToolOutput.interrupted == true' >/dev/null 2>&1; then
     ok "carries unrelated fields of tool_response through untouched"
 else
@@ -155,7 +189,7 @@ else
 fi
 
 # A tool result with no shell streams is not this hook's business.
-if [ "$(printf '{"tool_response":{"filePath":"/etc/hosts"}}' | bash "$TOOL")" = "" ]; then
+if [ "$(printf '{"tool_response":{"filePath":"/etc/hosts"}}' | run_tool)" = "" ]; then
     ok "declines a tool result that carries no stdout/stderr"
 else
     no "declines a tool result with no streams" "it invented a replacement"
@@ -175,7 +209,7 @@ GLPAT='glpat-0123456789abcdefghijklmnopqrstuvwx'
 # `\\n` and not `\n`: printf would turn the latter into a real newline inside
 # the JSON string, which is invalid JSON, and the hook would fail open — the
 # test would then pass for the wrong reason on a hook that never looked at it.
-bare="$(printf '{"tool_response":"Exit code 1\\nhttps://oauth2:%s@example/x.git\\n"}' "$GLPAT" | bash "$TOOL")"
+bare="$(printf '{"tool_response":"Exit code 1\\nhttps://oauth2:%s@example/x.git\\n"}' "$GLPAT" | run_tool)"
 if printf '%s' "$bare" | jq -r '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks a bare-string tool_response" "the raw token reached the output"
 elif printf '%s' "$bare" | jq -re '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
@@ -190,7 +224,7 @@ else
     no "rebuilds a string result as a string" "the schema of the result was changed"
 fi
 
-blob="$(printf '{"tool_response":{"is_error":true,"content":"https://oauth2:%s@example/x.git"}}' "$GLPAT" | bash "$TOOL")"
+blob="$(printf '{"tool_response":{"is_error":true,"content":"https://oauth2:%s@example/x.git"}}' "$GLPAT" | run_tool)"
 if printf '%s' "$blob" | jq -r '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks a {content:…} tool_response" "the raw token reached the output"
 elif printf '%s' "$blob" | jq -re '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
@@ -205,13 +239,13 @@ else
     no "carries unrelated fields through on the content shape" "is_error was dropped"
 fi
 
-if [ "$(printf '{"tool_response":"nothing secret here\\n"}' | bash "$TOOL")" = "" ]; then
+if [ "$(printf '{"tool_response":"nothing secret here\\n"}' | run_tool)" = "" ]; then
     ok "leaves a clean bare-string result alone"
 else
     no "leaves a clean bare-string result alone" "it rewrote output with no secret in it"
 fi
 
-read_shape="$(printf '{"tool_response":{"type":"text","file":{"filePath":"/tmp/x.env","totalLines":1,"content":"GITLAB=%s\\n"}}}' "$GLPAT" | bash "$TOOL")"
+read_shape="$(printf '{"tool_response":{"type":"text","file":{"filePath":"/tmp/x.env","totalLines":1,"content":"GITLAB=%s\\n"}}}' "$GLPAT" | run_tool)"
 if printf '%s' "$read_shape" | jq -r '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks the Read tool's {file:{content}} result" "the raw token reached the output"
 elif printf '%s' "$read_shape" | jq -re '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
@@ -235,7 +269,7 @@ fi
 # yaml`. The rebuild uses --rawfile now, which has no such ceiling.
 big="$(head -c 200000 /dev/zero | tr '\0' 'y')"
 bigout="$(printf '{"tool_response":{"stdout":"%s TOKEN=%s","stderr":""}}' "$big" "$GHP" |
-          bash "$TOOL" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout // empty' 2>/dev/null)"
+          run_tool | jq -r '.hookSpecificOutput.updatedToolOutput.stdout // empty' 2>/dev/null)"
 if [ -z "$bigout" ]; then
     no "masks a 200 KB stdout" "the hook produced no replacement — it failed open on size"
 elif grep -q "$GHP" <<< "$bigout"; then
@@ -244,7 +278,7 @@ else
     ok "masks a 200 KB stdout — past the 128 KB argument limit"
 fi
 
-warned="$(printf '{"tool_response":"https://oauth2:%s@example/x.git"}' "$GLPAT" | bash "$TOOL" --warn-only)"
+warned="$(printf '{"tool_response":"https://oauth2:%s@example/x.git"}' "$GLPAT" | run_tool --warn-only)"
 if grep -q "$GLPAT" <<< "$warned"; then
     no "--warn-only never repeats the value" "the token is in the warning"
 elif printf '%s' "$warned" | jq -re '.hookSpecificOutput.additionalContext' 2>/dev/null | grep 'credential-shaped' >/dev/null; then
@@ -257,14 +291,18 @@ fi
 # /bin/bash by absolute path: `PATH=/nonexistent bash` would fail to find bash
 # itself and report 127, which looks exactly like the failure being tested for.
 # Nothing external runs before the jq check, so an empty PATH is enough.
-nojq="$(PATH=/nonexistent /bin/bash "$TOOL" <<<'{"tool_response":{"stdout":"--pass '"$HEX"'"}}' 2>/dev/null; printf 'rc=%s' "$?")"
-if [ "$nojq" = "rc=0" ]; then
-    ok "fails open when jq is unavailable"
-else
-    no "fails open when jq is unavailable" "got [$nojq], expected a silent rc=0"
+# POSIX only: the PowerShell port parses JSON with ConvertFrom-Json and masks
+# with .NET regex, so it has neither dependency to lose.
+if [ "$PORT" = posix ]; then
+    nojq="$(PATH=/nonexistent /bin/bash "$TOOL" <<<'{"tool_response":{"stdout":"--pass '"$HEX"'"}}' 2>/dev/null; printf 'rc=%s' "$?")"
+    if [ "$nojq" = "rc=0" ]; then
+        ok "fails open when jq is unavailable"
+    else
+        no "fails open when jq is unavailable" "got [$nojq], expected a silent rc=0"
+    fi
 fi
 
-if [ "$(printf '' | bash "$TOOL"; printf 'rc=%s' "$?")" = "rc=0" ]; then
+if [ "$(printf '' | run_tool; printf 'rc=%s' "$?")" = "rc=0" ]; then
     ok "fails open on empty input"
 else
     no "fails open on empty input" "it did not exit 0 silently"
@@ -273,14 +311,14 @@ fi
 # ── --filter: the plain-text mode the Opencode plugin uses ──────────────────
 # The plugin skips the assignment when nothing changed, so the exit status is
 # part of the contract, not a detail: 0 masked, 1 untouched.
-filtered="$(printf 'croc --pass %s x\n' "$HEX" | bash "$TOOL" --filter; printf 'rc=%s' "$?")"
+filtered="$(printf 'croc --pass %s x\n' "$HEX" | run_tool --filter; printf 'rc=%s' "$?")"
 if [ "$filtered" = "$(printf 'croc --pass <REDACTED:32> x\nrc=0')" ]; then
     ok "--filter masks and reports exit 0"
 else
     no "--filter masks and reports exit 0" "got: $filtered"
 fi
 
-untouched="$(printf 'md5 %s\n' "$HEX" | bash "$TOOL" --filter; printf 'rc=%s' "$?")"
+untouched="$(printf 'md5 %s\n' "$HEX" | run_tool --filter; printf 'rc=%s' "$?")"
 if [ "$untouched" = "$(printf 'md5 %s\nrc=1' "$HEX")" ]; then
     ok "--filter passes a checksum through and reports exit 1"
 else
@@ -289,19 +327,21 @@ fi
 
 # --filter is the mode that must work on a machine without jq: the plugin runs
 # it directly, with no JSON on either side.
-nojq_filter="$(printf 'x --pass %s\n' "$HEX" |
-               PATH="/usr/bin:/bin" /bin/bash "$TOOL" --filter 2>/dev/null)"
-if grep -q 'REDACTED' <<< "$nojq_filter"; then
-    ok "--filter needs no jq"
-else
-    no "--filter needs no jq" "got: $nojq_filter"
+if [ "$PORT" = posix ]; then
+    nojq_filter="$(printf 'x --pass %s\n' "$HEX" |
+                   PATH="/usr/bin:/bin" /bin/bash "$TOOL" --filter 2>/dev/null)"
+    if grep -q 'REDACTED' <<< "$nojq_filter"; then
+        ok "--filter needs no jq"
+    else
+        no "--filter needs no jq" "got: $nojq_filter"
+    fi
 fi
 
 # ── --warn-only: what an assistant that cannot replace output gets ──────────
 # Codex names the shell result `output`, Claude Code splits it into stdout and
 # stderr; the warning path reads all three, so the Codex shape is the one worth
 # asserting — it is the shape the other modes never see.
-warn="$(printf '{"tool_response":{"output":"croc --pass %s code"}}' "$HEX" | bash "$TOOL" --warn-only)"
+warn="$(printf '{"tool_response":{"output":"croc --pass %s code"}}' "$HEX" | run_tool --warn-only)"
 
 if printf '%s' "$warn" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
     ok "--warn-only reports through additionalContext"
@@ -322,7 +362,7 @@ else
     ok "--warn-only claims no power it lacks"
 fi
 
-quiet="$(printf '{"tool_response":{"output":"md5 %s"}}' "$HEX" | bash "$TOOL" --warn-only)"
+quiet="$(printf '{"tool_response":{"output":"md5 %s"}}' "$HEX" | run_tool --warn-only)"
 if [ "$quiet" = "" ]; then
     ok "--warn-only stays silent on a bare checksum"
 else
@@ -356,9 +396,17 @@ fi
 # installed standalone onto PATH, and a shared include would be a third file
 # to install and a new way for the pair to half-exist. Duplication is fine as
 # long as something notices when the copies part.
-if diff <(grep -E '^  RE = ' "$SRC/bin/safe-env") \
-        <(grep -E '^  RE = ' "$TOOL") >/dev/null 2>&1; then
-    ok "tier-1 patterns match bin/safe-env character for character"
+# The PowerShell pair carries the same list in its own syntax, so the
+# comparison is between the two .ps1 files there, not across languages.
+if [ "$PORT" = pwsh ]; then
+    peer="$SRC/bin/safe-env.ps1"
+    strip () { sed -n "/^\\\$patterns = @(/,/^)/p" "$1" | sed 's/[[:space:]]*#.*//; s/^[[:space:]]*//; /^$/d'; }
+else
+    peer="$SRC/bin/safe-env"
+    strip () { grep -E '^  RE = ' "$1"; }
+fi
+if diff <(strip "$peer") <(strip "$TOOL") >/dev/null 2>&1; then
+    ok "tier-1 patterns match ${peer##*/} character for character"
 else
     no "tier-1 patterns match bin/safe-env" \
        "the provider list has drifted; run: diff <(grep '^  RE = ' bin/safe-env) <(grep '^  RE = ' bin/secrets-redact)"

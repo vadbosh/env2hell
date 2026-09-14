@@ -3,7 +3,14 @@
 # redact the values that look like secrets.
 #
 #   ./tests/test_safe_env.sh               test the copy in ../bin
+#   ./tests/test_safe_env.sh --pwsh        test the PowerShell port instead
 #   ./tests/test_safe_env.sh --tool PATH   test an installed copy
+#
+# The PowerShell port had no suite of its own until 2026-09-14, and that is
+# exactly how `secrets-guard.ps1` drifted: it lost the command-substitution pass
+# the POSIX guard had, denied a working command, and nothing ran to notice.
+# Running the same cases against both is the only thing that keeps two
+# implementations of one rule in step.
 #
 # The first case is the one this file exists for. safe-env used to call `env`
 # through PATH, and the uv installer writes a file of its own named `env` into
@@ -15,17 +22,23 @@ set -uo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOL="$SRC/bin/safe-env"
+RUNNER="bash"
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --pwsh) TOOL="$SRC/bin/safe-env.ps1"; RUNNER="pwsh -NoProfile -File" ;;
         --tool) TOOL="${2:-}"; shift ;;
-        -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
 
 [ -e "$TOOL" ] || { echo "safe-env not found: $TOOL" >&2; exit 2; }
+
+# $RUNNER is a command plus its flags and has to split into words.
+# shellcheck disable=SC2086
+run_tool () { $RUNNER "$TOOL"; }
 
 pass=0
 fail=0
@@ -34,7 +47,7 @@ ok () { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
 no () { fail=$((fail + 1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
 # The whole environment, whatever it is, must come back.
-lines="$(bash "$TOOL" 2>/dev/null | wc -l)"
+lines="$(run_tool 2>/dev/null | wc -l)"
 if [ "$lines" -gt 0 ]; then
     ok "prints the environment ($lines lines)"
 else
@@ -43,7 +56,7 @@ fi
 
 # A planted secret must not appear in the output; a plain value must.
 planted="$(MYTEST_TOKEN='ghp_0123456789abcdefghijklmnopqrstuvwxyzAB' \
-           MYTEST_PLAIN='hello-world' bash "$TOOL" 2>/dev/null)"
+           MYTEST_PLAIN='hello-world' run_tool 2>/dev/null)"
 
 if grep -q 'ghp_0123456789' <<< "$planted"; then
     no "masks a github token" "the raw value reached the output"
@@ -73,7 +86,7 @@ fi
 
 # A long hex string is a secret even without a recognisable prefix.
 unprefixed="$(MYTEST_HEX='0123456789abcdef0123456789abcdef0123456789' \
-              bash "$TOOL" 2>/dev/null)"
+              run_tool 2>/dev/null)"
 if grep -q '^MYTEST_HEX=<REDACTED:' <<< "$unprefixed"; then
     ok "masks an unprefixed high-entropy value"
 else
@@ -84,7 +97,7 @@ fi
 # generic fallbacks miss it — the body carries '-', '_' and '=' — so it needs
 # its own pattern.
 atl="$(MYTEST_ATL='ATATT3xFfGF0YULg6ygsuaRoh0oRsRcmtUdOrLkiAeWFqtnR5wQ72GF0odDd-kw3qD0v-Bl_noPqLIZU1va5C4D6yv2zLss8Zh9RJixqpilKBitzF5vP-RFQnrKasP0RRwOVg3FIdHRsjdmKoIwOv=A5DDAXXD' \
-              bash "$TOOL" 2>/dev/null)"
+              run_tool 2>/dev/null)"
 if grep -q '^MYTEST_ATL=<REDACTED:' <<< "$atl"; then
     ok "masks an Atlassian API token"
 else
@@ -96,7 +109,7 @@ fi
 named="$(MYTEST_JIRA_API_TOKEN='K3nT8sQ2vB7hL9wR4dY6' \
          MYTEST_TOKENIZERS_PARALLELISM='false' \
          MYTEST_TOKEN_FILE='/etc/creds/jira' \
-         bash "$TOOL" 2>/dev/null)"
+         run_tool 2>/dev/null)"
 if grep -q '^MYTEST_JIRA_API_TOKEN=<REDACTED:' <<< "$named"; then
     ok "masks a shapeless value whose name says credential"
 else

@@ -34,8 +34,13 @@ $patterns = @(
     'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.'    # JWT
     '://[^/:@\s]+:[^/:@\s]{3,}@'                        # password inside a URL
     'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY'        # private key block
-    '(?i)IDENTIFIED\s+BY\s+[''"][^''"]{6,}'             # SQL password
 )
+
+# Kept out of $patterns on purpose, and the POSIX pair does the same: this list
+# is compared character for character against bin/secrets-redact.ps1 by
+# tests/test_redact.sh, and the redactor has no SQL rule. A pattern that lives
+# in one file and not the other belongs beside the list, not inside it.
+$sqlPassword = '(?i)IDENTIFIED\s+BY\s+[''"][^''"]{6,}'
 
 $fallbacks = @(
     '^[A-Fa-f0-9]{32,}$'                                # long hex
@@ -45,6 +50,7 @@ $fallbacks = @(
 
 function Test-Secret([string]$Value) {
     foreach ($p in $patterns)  { if ($Value -match $p) { return $true } }
+    if ($Value -match $sqlPassword) { return $true }
     foreach ($p in $fallbacks) { if ($Value -match $p) { return $true } }
     # A dotted token whose halves are both long: caught by neither list above.
     if ($Value -match '[A-Za-z0-9_-]{40,}' -and $Value -match '[A-Za-z0-9_-]\.[A-Za-z0-9_-]') {

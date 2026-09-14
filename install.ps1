@@ -156,6 +156,67 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
     Say $(if ($DryRun) { '    would add hook' } else { '    hook added' })
 }
 
+# The guard denies a command before it runs; the redactor masks what a command
+# already printed. Until 2026-09-14 the Windows installer wired only the first,
+# so a Windows install had a gate and no net: every value a program echoed back
+# — a password handed to croc, a token inside a URL, an auth error quoting the
+# key — reached the model and the transcript untouched.
+#
+# The two matchers differ on purpose. The guard reads a command line, which has
+# no meaning for a tool that runs no shell. The redactor reads a result, and a
+# result carrying a credential need not have come from a shell: `Read` on a
+# .env or a kubeconfig hands the file over verbatim, and `Grep` returns the
+# matching lines.
+function Update-RedactConfig ($Name, $Path, $RedactPath) {
+    $data = Read-Json $Path
+    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+        Set-Property $data 'hooks' ([pscustomobject]@{})
+    }
+    if ($data.hooks.PSObject.Properties.Name -notcontains 'PostToolUse') {
+        Set-Property $data.hooks 'PostToolUse' @()
+    }
+
+    # Codex cannot replace a tool result — its PostToolUseOutcome carries
+    # should_block, additional_contexts and feedback_message and nothing that
+    # rewrites output — so there the hook warns instead, which is what turns a
+    # silent leak into a rotation.
+    $matcher  = if ($Name -eq 'codex') { '^Bash$' } else { 'Bash|Read|Grep' }
+    $argument = if ($Name -eq 'codex') { ' --warn-only' } else { '' }
+
+    $entries = @($data.hooks.PostToolUse)
+    $already = @($entries | Where-Object {
+        $_.hooks | Where-Object { "$($_.command)" -match 'secrets-redact' }
+    })
+    if ($already.Count -gt 0) {
+        # An install made before the matcher widened is still wired for Bash
+        # alone, and re-running the installer is the only thing that will ever
+        # look at it again.
+        $fixed = 0
+        foreach ($e in $already) {
+            if ("$($e.matcher)" -ne $matcher) { $e.matcher = $matcher; $fixed++ }
+        }
+        if ($fixed -eq 0) { Say '    = redactor already wired'; return }
+        Write-Json $Path $data
+        Say $(if ($DryRun) { "    would set redactor matcher to $matcher" }
+              else         { "    redactor matcher set to $matcher" })
+        return
+    }
+
+    $entry = [pscustomobject]@{
+        matcher = $matcher
+        hooks   = @([pscustomobject]@{
+            type          = 'command'
+            shell         = 'powershell'
+            command       = "& `"$RedactPath`"$argument"
+            timeout       = 10
+            statusMessage = 'secrets-redact...'
+        })
+    }
+    $data.hooks.PostToolUse = @($entries + $entry)
+    Write-Json $Path $data
+    Say $(if ($DryRun) { '    would add redactor hook' } else { '    redactor hook added' })
+}
+
 function Update-OpencodeConfig ($Path, $WithRule) {
     $data = Read-Json $Path
     $changed = 0
@@ -203,9 +264,11 @@ function Update-OpencodeConfig ($Path, $WithRule) {
 
 # ── commands ────────────────────────────────────────────────────────────────
 Say '-- commands --'
-$guard = "$BinDir\secrets-guard.ps1"
-Install-File "$Src\bin\secrets-guard.ps1" $guard
-Install-File "$Src\bin\safe-env.ps1"      "$BinDir\safe-env.ps1"
+$guard  = "$BinDir\secrets-guard.ps1"
+$redact = "$BinDir\secrets-redact.ps1"
+Install-File "$Src\bin\secrets-guard.ps1"  $guard
+Install-File "$Src\bin\secrets-redact.ps1" $redact
+Install-File "$Src\bin\safe-env.ps1"       "$BinDir\safe-env.ps1"
 
 if (($env:PATH -split ';') -notcontains $BinDir) {
     Warn "    $BinDir is not on PATH. Add it for the current user:"
@@ -231,7 +294,8 @@ foreach ($name in $ides) {
                      "$Home_\.config\opencode\plugins\secrets-guard.ts"
         Update-OpencodeConfig $config (-not $NoRule)
     } else {
-        Update-HookConfig $name $config $guard
+        Update-HookConfig   $name $config $guard
+        Update-RedactConfig $name $config $redact
     }
 
     if (-not $NoRule) {
