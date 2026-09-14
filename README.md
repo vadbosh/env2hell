@@ -304,6 +304,21 @@ now and finding out never.
   the command has already executed, and the telemetry the assistant sends
   records the original output. What the model reads is masked; what the vendor
   logged is not.
+- **A command that fails is not masked at all, and cannot be.** In Claude Code a
+  non-zero exit does not fire `PostToolUse`; it fires `PostToolUseFailure`,
+  whose only documented return field is `additionalContext`. There is no slot
+  for a replacement, so the output reaches the model and the transcript intact.
+  env2hell wires a `--warn-only` hook there, which tells the model a credential
+  just landed in the transcript and has to be rotated — a loud leak instead of a
+  silent one, which is all that event allows.
+
+  This is not a corner case. A failing command is where credentials surface: a
+  URL carrying a password, an auth error quoting the token, a connection string
+  in a stack trace. It is how the GitLab token that prompted this section
+  reached a transcript in full, from a `git remote -v` that exited 1 because a
+  later command in the same call failed. The durable fix for that class is to
+  keep the credential out of the command's output in the first place — a deploy
+  key or a credential helper instead of a token embedded in a remote URL.
 - The redactor needs a label. An unlabelled secret that looks like ordinary text
   — a passphrase of three English words, say — passes through untouched.
 - It is a filter, not a sandbox. It raises the cost of the common accident; it

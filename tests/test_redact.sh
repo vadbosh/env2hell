@@ -213,7 +213,7 @@ bare="$(printf '{"tool_response":"Exit code 1\\nhttps://oauth2:%s@example/x.git\
 if printf '%s' "$bare" | jq -r '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep "$GLPAT" >/dev/null; then
     no "masks a bare-string tool_response" "the raw token reached the output"
 elif printf '%s' "$bare" | jq -re '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep '<REDACTED:' >/dev/null; then
-    ok "masks a bare-string tool_response — the shape a failed command takes"
+    ok "masks a bare-string tool_response"
 else
     no "masks a bare-string tool_response" "no replacement was produced at all"
 fi
@@ -335,6 +335,49 @@ if [ "$PORT" = posix ]; then
     else
         no "--filter needs no jq" "got: $nojq_filter"
     fi
+fi
+
+# ── PostToolUseFailure: the one path where masking is impossible ────────────
+# A command that exits non-zero does not fire PostToolUse in Claude Code. It
+# fires PostToolUseFailure, whose output is a top-level `error` string — first
+# line `Exit code N`, then stdout and stderr interleaved — and whose only
+# documented return field is `additionalContext`. There is no slot for a
+# replacement, so the value is in the transcript before any hook sees it.
+#
+# That is the path the GitLab token took on 2026-09-14. All the warning can do
+# is make the leak loud enough to be rotated, and the two things it must get
+# right are asserted here: it has to notice, and it has to name the event back
+# as it arrived — a hook that answers "PostToolUse" to a failure event is
+# answering a question nobody asked, and the reply is dropped.
+# `\\n`, not `\n`: printf would turn the latter into a real newline inside the
+# JSON string, the payload would be invalid JSON, and the hook would fail open —
+# the test would then pass for the wrong reason, on a hook that never looked.
+fail_payload="$(printf '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","error":"Exit code 1\\nurl https://oauth2:%s@gitlab.example/x.git\\n"}' "$GLPAT")"
+failwarn="$(printf '%s' "$fail_payload" | run_tool --warn-only)"
+
+if printf '%s' "$failwarn" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+    ok "--warn-only notices a credential in a PostToolUseFailure error string"
+else
+    no "--warn-only notices a credential in a failure error string" "got: $failwarn"
+fi
+
+if printf '%s' "$failwarn" | jq -e '.hookSpecificOutput.hookEventName == "PostToolUseFailure"' >/dev/null 2>&1; then
+    ok "names the failure event back as it arrived"
+else
+    no "names the failure event back as it arrived" \
+       "got: $(printf '%s' "$failwarn" | jq -r '.hookSpecificOutput.hookEventName // "<none>"')"
+fi
+
+if grep -q "$GLPAT" <<< "$failwarn"; then
+    no "the failure warning never repeats the value" "the token is in the warning"
+else
+    ok "the failure warning never repeats the value"
+fi
+
+if [ -z "$(printf '{"hook_event_name":"PostToolUseFailure","error":"Exit code 1\\nfile not found\\n"}' | run_tool --warn-only)" ]; then
+    ok "stays silent on a failure with no credential in it"
+else
+    no "stays silent on a failure with no credential in it" "it warned about nothing"
 fi
 
 # ── --warn-only: what an assistant that cannot replace output gets ──────────

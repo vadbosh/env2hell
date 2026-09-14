@@ -217,6 +217,47 @@ function Update-RedactConfig ($Name, $Path, $RedactPath) {
     Say $(if ($DryRun) { '    would add redactor hook' } else { '    redactor hook added' })
 }
 
+# Claude Code's PostToolUseFailure: the event a non-zero exit fires instead of
+# PostToolUse. A failed command never reaches the redactor otherwise, which is
+# how a GitLab token reached a transcript in full on 2026-09-14.
+#
+# Wiring it does not mask that output — the event documents `additionalContext`
+# and no field that replaces a result, so the value is in the transcript before
+# any hook sees it. What it buys is that the model is told, in the same turn,
+# that a credential just landed there and has to be rotated. Hence --warn-only,
+# whatever the success path does on this assistant.
+function Update-FailureConfig ($Name, $Path, $RedactPath) {
+    if ($Name -ne 'claude') { return }        # the event is Claude Code's
+
+    $data = Read-Json $Path
+    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+        Set-Property $data 'hooks' ([pscustomobject]@{})
+    }
+    if ($data.hooks.PSObject.Properties.Name -notcontains 'PostToolUseFailure') {
+        Set-Property $data.hooks 'PostToolUseFailure' @()
+    }
+
+    $entries = @($data.hooks.PostToolUseFailure)
+    $already = @($entries | Where-Object {
+        $_.hooks | Where-Object { "$($_.command)" -match 'secrets-redact' }
+    })
+    if ($already.Count -gt 0) { Say '    = failure hook already wired'; return }
+
+    $entry = [pscustomobject]@{
+        matcher = 'Bash|Read|Grep'
+        hooks   = @([pscustomobject]@{
+            type          = 'command'
+            shell         = 'powershell'
+            command       = "& `"$RedactPath`" --warn-only"
+            timeout       = 10
+            statusMessage = 'secrets-redact...'
+        })
+    }
+    $data.hooks.PostToolUseFailure = @($entries + $entry)
+    Write-Json $Path $data
+    Say $(if ($DryRun) { '    would add failure hook' } else { '    failure hook added' })
+}
+
 function Update-OpencodeConfig ($Path, $WithRule) {
     $data = Read-Json $Path
     $changed = 0
@@ -294,8 +335,9 @@ foreach ($name in $ides) {
                      "$Home_\.config\opencode\plugins\secrets-guard.ts"
         Update-OpencodeConfig $config (-not $NoRule)
     } else {
-        Update-HookConfig   $name $config $guard
-        Update-RedactConfig $name $config $redact
+        Update-HookConfig    $name $config $guard
+        Update-RedactConfig  $name $config $redact
+        Update-FailureConfig $name $config $redact
     }
 
     if (-not $NoRule) {

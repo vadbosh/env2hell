@@ -146,8 +146,15 @@ try { $payload = $raw | ConvertFrom-Json } catch { exit 0 }   # fail open
 if ($null -eq $payload) { exit 0 }
 
 $resp = $null
-try { $resp = $payload.tool_response } catch { exit 0 }
-if ($null -eq $resp) { exit 0 }
+try { $resp = $payload.tool_response } catch { $resp = $null }
+
+# A failed command carries no tool_response at all: Claude Code routes it to
+# PostToolUseFailure, whose output lives in a top-level `error` string. Only
+# --warn-only can do anything with that, and only because the failure event has
+# no field that would replace a result.
+$errText = $null
+try { $errText = $payload.error } catch { $errText = $null }
+if ($null -eq $resp -and $errText -isnot [string]) { exit 0 }
 
 $ctx = '[secrets-redact] A secret-shaped value in this output was replaced ' +
        'with <REDACTED:length>. Do not try to recover it, and do not print ' +
@@ -161,18 +168,25 @@ function Get-Field($Object, [string]$Name) {
     return $p.Value
 }
 
-# ── warn-only, for an assistant that cannot replace a result ────────────────
-# Codex's PostToolUseOutcome carries should_block, additional_contexts and
-# feedback_message, and nothing that replaces output. What is left is to say
-# so: the model learns a credential is now in the transcript, which is what
-# turns a silent leak into a rotation. The message never repeats the value and
-# never says which command produced it — both would put a second copy in the
-# very transcript being warned about.
+# ── warn-only, where a result cannot be replaced ────────────────────────────
+# Two events land here, and neither can be rewritten. Codex's
+# PostToolUseOutcome carries should_block, additional_contexts and
+# feedback_message, and nothing that replaces output. Claude Code's
+# PostToolUseFailure — the event a non-zero exit fires instead of PostToolUse —
+# documents `additionalContext` and nothing else.
+#
+# So for a failed command there is no masking to be had, and a failing command
+# is exactly when a credential surfaces. What is left is to say so: the model
+# learns a credential is now in the transcript, which is what turns a silent
+# leak into a rotation. The message never repeats the value and never says
+# which command produced it — both would put a second copy in the very
+# transcript being warned about.
 if ($mode -eq '--warn-only') {
     $text = ''
+    if ($errText -is [string]) { $text = $errText }
     if ($resp -is [string]) {
         $text = $resp
-    } else {
+    } elseif ($null -ne $resp) {
         foreach ($n in 'output', 'stdout', 'stderr', 'content') {
             $v = Get-Field $resp $n
             if ($v -is [string]) { $text += $v }
@@ -184,13 +198,19 @@ if ($mode -eq '--warn-only') {
     if ($text -eq '') { exit 0 }
     $null = Edit-Text $text
     if ($script:Hits -le 0) { exit 0 }
+    # Named back exactly as it arrived: a hook wired to PostToolUseFailure that
+    # answers "PostToolUse" is answering a question nobody asked, and the reply
+    # is dropped.
+    $eventName = 'PostToolUse'
+    $en = Get-Field $payload 'hook_event_name'
+    if ($en -is [string] -and $en -ne '') { $eventName = $en }
     @{
         hookSpecificOutput = @{
-            hookEventName     = 'PostToolUse'
+            hookEventName     = $eventName
             additionalContext = "[secrets-redact] This output contains $($script:Hits) " +
-                'credential-shaped value(s). Hooks in this assistant cannot remove it, ' +
-                'so it is already in the transcript. Do not repeat it, do not echo the ' +
-                'command that produced it, and tell the user the value has to be rotated.'
+                'credential-shaped value(s). It cannot be removed here, so it is already ' +
+                'in the transcript. Do not repeat it, do not echo the command that ' +
+                'produced it, and tell the user the value has to be rotated.'
         }
     } | ConvertTo-Json -Depth 20 -Compress
     exit 0
@@ -202,12 +222,12 @@ if ($mode -eq '--warn-only') {
 #   streams   {"stdout": …, "stderr": …}      a shell call that succeeded
 #   file      {"file": {"content": …}, …}     what the Read tool returns
 #   content   {"content": "…"}                one blob; Grep returns this
-#   string    "…"                             what the harness sends when the
-#                                             command exited non-zero
+#   string    "…"                             a result handed over whole
 #
-# That last one is the one this hook was blind to until 2026-09-14: a failing
-# command is precisely when a credential surfaces — a URL carrying a password,
-# an auth error quoting the token — and it was the only shape not covered.
+# The string branch is defensive, not a path any assistant here is known to
+# take. A non-zero exit reaches Claude Code's PostToolUseFailure instead, where
+# the output is a top-level `error` string and nothing can replace it — see the
+# --warn-only branch above.
 $stdout = Get-Field $resp 'stdout'
 $stderr = Get-Field $resp 'stderr'
 $file   = Get-Field $resp 'file'
@@ -221,7 +241,7 @@ $shape =
     elseif ($content -is [string])                     { 'content' }
     else                                               { 'other'   }
 
-if ($shape -eq 'other') { exit 0 }
+if ($shape -eq 'other' -or $null -eq $resp) { exit 0 }
 
 try {
     switch ($shape) {

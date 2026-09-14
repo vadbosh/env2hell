@@ -254,6 +254,72 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
     return changed
 
 
+def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[str]:
+    """Claude Code's PostToolUseFailure: the event a non-zero exit fires.
+
+    A command that fails does not reach PostToolUse at all, so the redactor
+    never ran for one — which is how a GitLab token reached a transcript in
+    full on 2026-09-14, from a `git remote -v` that exited 1 because a later
+    command in the same call failed.
+
+    Wiring it here does not mask that output: PostToolUseFailure documents
+    `additionalContext` and no field that replaces a result, so the value is
+    already in the transcript by the time any hook sees it. What this buys is
+    that the model is told, in the same turn, that a credential just landed
+    there and has to be rotated. A silent leak becomes a loud one, which is the
+    whole difference between a key that gets rotated and a key that does not.
+
+    A failing command is also where credentials surface most: a URL carrying a
+    password, an auth error quoting the token, a connection string in a stack
+    trace.
+    """
+    if ide != "claude":
+        return []                      # the event is Claude Code's
+
+    changed = []
+    hooks = data.setdefault("hooks", {})
+    fail = hooks.setdefault("PostToolUseFailure", [])
+
+    present = [
+        e for e in fail
+        if any("secrets-redact" in str(h.get("command", ""))
+               for h in e.get("hooks", []))
+    ]
+
+    wanted = f"{redact} --warn-only"
+
+    if remove:
+        for entry in present:
+            fail.remove(entry)
+            changed.append("failure-hook removed")
+        if not fail:
+            hooks.pop("PostToolUseFailure", None)
+        return changed
+
+    if present:
+        for entry in present:
+            if entry.get("matcher") != REDACT_MATCHER[ide]:
+                entry["matcher"] = REDACT_MATCHER[ide]
+                changed.append(f"failure-hook matcher set to {REDACT_MATCHER[ide]}")
+            for h in entry.get("hooks", []):
+                if "secrets-redact" in str(h.get("command", "")) and h["command"] != wanted:
+                    h["command"] = wanted
+                    changed.append("failure-hook repointed")
+        return changed
+
+    fail.append({
+        "matcher": REDACT_MATCHER[ide],
+        "hooks": [{
+            "type": "command",
+            "command": wanted,
+            "timeout": 10,
+            "statusMessage": "secrets-redact...",
+        }],
+    })
+    changed.append("failure-hook added")
+    return changed
+
+
 def patch_opencode(data: dict, remove: bool, with_rule: bool = False) -> list[str]:
     changed = []
     instructions = data.setdefault("instructions", [])
@@ -333,6 +399,12 @@ def main() -> int:
         if args.ide in (REDACT_IDES | WARN_IDES) and (args.redact or args.remove):
             command = redact_command(args.ide, args.redact) if args.redact else ""
             changed += patch_post_hooks(args.ide, data, command, args.remove)
+            # Always --warn-only there, whatever this assistant does on the
+            # success path: the failure event has no field that replaces a
+            # result, so `args.redact` unadorned would be a hook that produces
+            # a reply the harness throws away.
+            changed += patch_failure_hooks(
+                args.ide, data, args.redact or "", args.remove)
 
     if not changed:
         print("    = already current")
