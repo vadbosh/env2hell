@@ -161,6 +161,65 @@ else
     no "declines a tool result with no streams" "it invented a replacement"
 fi
 
+# ── every shape a tool result arrives in ────────────────────────────────────
+# Claude Code sends {"stdout":…,"stderr":…} for a command that succeeded, and a
+# bare string when it exited non-zero. Until 2026-09-14 the hook read the two
+# stream fields and nothing else, so a `git remote -v` that failed carried its
+# GitLab token straight into the transcript: both fields were empty, the hook
+# declined, and the leak was invisible because the hook had fired correctly all
+# session on every command that worked. A failing command is precisely when a
+# credential surfaces — a URL with a password in it, an auth error quoting the
+# token — so the shape that was not covered was the shape that mattered most.
+GLPAT='glpat-0123456789abcdefghijklmnopqrstuvwx'
+
+# `\\n` and not `\n`: printf would turn the latter into a real newline inside
+# the JSON string, which is invalid JSON, and the hook would fail open — the
+# test would then pass for the wrong reason on a hook that never looked at it.
+bare="$(printf '{"tool_response":"Exit code 1\\nhttps://oauth2:%s@example/x.git\\n"}' "$GLPAT" | bash "$TOOL")"
+if printf '%s' "$bare" | jq -r '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep -q "$GLPAT"; then
+    no "masks a bare-string tool_response" "the raw token reached the output"
+elif printf '%s' "$bare" | jq -re '.hookSpecificOutput.updatedToolOutput' 2>/dev/null | grep -q '<REDACTED:'; then
+    ok "masks a bare-string tool_response — the shape a failed command takes"
+else
+    no "masks a bare-string tool_response" "no replacement was produced at all"
+fi
+
+if printf '%s' "$bare" | jq -e '(.hookSpecificOutput.updatedToolOutput | type) == "string"' >/dev/null 2>&1; then
+    ok "rebuilds a string result as a string, not as an object"
+else
+    no "rebuilds a string result as a string" "the schema of the result was changed"
+fi
+
+blob="$(printf '{"tool_response":{"is_error":true,"content":"https://oauth2:%s@example/x.git"}}' "$GLPAT" | bash "$TOOL")"
+if printf '%s' "$blob" | jq -r '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep -q "$GLPAT"; then
+    no "masks a {content:…} tool_response" "the raw token reached the output"
+elif printf '%s' "$blob" | jq -re '.hookSpecificOutput.updatedToolOutput.content' 2>/dev/null | grep -q '<REDACTED:'; then
+    ok "masks a {content:…} tool_response"
+else
+    no "masks a {content:…} tool_response" "no replacement was produced at all"
+fi
+
+if printf '%s' "$blob" | jq -e '.hookSpecificOutput.updatedToolOutput.is_error == true' >/dev/null 2>&1; then
+    ok "carries unrelated fields through on the content shape too"
+else
+    no "carries unrelated fields through on the content shape" "is_error was dropped"
+fi
+
+if [ "$(printf '{"tool_response":"nothing secret here\\n"}' | bash "$TOOL")" = "" ]; then
+    ok "leaves a clean bare-string result alone"
+else
+    no "leaves a clean bare-string result alone" "it rewrote output with no secret in it"
+fi
+
+warned="$(printf '{"tool_response":"https://oauth2:%s@example/x.git"}' "$GLPAT" | bash "$TOOL" --warn-only)"
+if printf '%s' "$warned" | grep -q "$GLPAT"; then
+    no "--warn-only never repeats the value" "the token is in the warning"
+elif printf '%s' "$warned" | jq -re '.hookSpecificOutput.additionalContext' 2>/dev/null | grep -q 'credential-shaped'; then
+    ok "--warn-only reports a bare-string result"
+else
+    no "--warn-only reports a bare-string result" "no warning was produced"
+fi
+
 # ── failing open ────────────────────────────────────────────────────────────
 # /bin/bash by absolute path: `PATH=/nonexistent bash` would fail to find bash
 # itself and report 127, which looks exactly like the failure being tested for.
