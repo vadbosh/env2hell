@@ -211,6 +211,39 @@ else
     no "leaves a clean bare-string result alone" "it rewrote output with no secret in it"
 fi
 
+read_shape="$(printf '{"tool_response":{"type":"text","file":{"filePath":"/tmp/x.env","totalLines":1,"content":"GITLAB=%s\\n"}}}' "$GLPAT" | bash "$TOOL")"
+if printf '%s' "$read_shape" | jq -r '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep -q "$GLPAT"; then
+    no "masks the Read tool's {file:{content}} result" "the raw token reached the output"
+elif printf '%s' "$read_shape" | jq -re '.hookSpecificOutput.updatedToolOutput.file.content' 2>/dev/null | grep -q '<REDACTED:'; then
+    ok "masks the Read tool's {file:{content}} result"
+else
+    no "masks the Read tool's {file:{content}} result" "no replacement was produced at all"
+fi
+
+if printf '%s' "$read_shape" | jq -e '.hookSpecificOutput.updatedToolOutput.file.filePath == "/tmp/x.env"' >/dev/null 2>&1; then
+    ok "keeps the Read result's siblings — filePath, totalLines"
+else
+    no "keeps the Read result's siblings" "the file object was rebuilt from scratch"
+fi
+
+# ── size: the argument limit this hook used to fail open at ─────────────────
+# `jq --arg out "$big"` dies at MAX_ARG_STRLEN — 128 KB on Linux, a single
+# argument's limit and not ARG_MAX as a whole. The `|| exit 0` after it turned
+# that into a silent pass-through. Measured 2026-09-14: 96 KB was masked, 128 KB
+# was not, and nothing reported the difference. 128 KB of command output is
+# ordinary — one `terraform show`, one verbose log, one long `kubectl get -o
+# yaml`. The rebuild uses --rawfile now, which has no such ceiling.
+big="$(head -c 200000 /dev/zero | tr '\0' 'y')"
+bigout="$(printf '{"tool_response":{"stdout":"%s TOKEN=%s","stderr":""}}' "$big" "$GHP" |
+          bash "$TOOL" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout // empty' 2>/dev/null)"
+if [ -z "$bigout" ]; then
+    no "masks a 200 KB stdout" "the hook produced no replacement — it failed open on size"
+elif printf '%s' "$bigout" | grep -q "$GHP"; then
+    no "masks a 200 KB stdout" "the raw value reached the output"
+else
+    ok "masks a 200 KB stdout — past the 128 KB argument limit"
+fi
+
 warned="$(printf '{"tool_response":"https://oauth2:%s@example/x.git"}' "$GLPAT" | bash "$TOOL" --warn-only)"
 if printf '%s' "$warned" | grep -q "$GLPAT"; then
     no "--warn-only never repeats the value" "the token is in the warning"

@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# scan-transcripts — find credentials already written into assistant transcripts.
+#
+# secrets-redact stops a secret from reaching the model. It does nothing about
+# the ones already on disk: a transcript is written as the session runs, it is
+# never rewritten, and a value that leaked before the hook covered that case is
+# still sitting there. Measured 2026-09-14 on the machine this was written for:
+# six distinct credential-shaped values across six transcripts, the oldest from
+# July, none of them known to anyone until the files were looked at.
+#
+# Rotation is the only fix for a leaked value, and rotation needs a list. This
+# produces the list.
+#
+#   scan-transcripts                 scan every store this machine has
+#   scan-transcripts --path DIR      scan a directory of your own
+#   scan-transcripts --quiet         per-file counts, no excerpts
+#   scan-transcripts --files         only the names of files with findings
+#
+# Exit status: 0 nothing found, 1 findings, 2 could not run. So it fits a cron
+# line or a CI step without parsing the output.
+#
+# ── it never prints a secret ────────────────────────────────────────────────
+# Every excerpt is taken from the *masked* copy of the line, so what reaches
+# the terminal — and the transcript of the session running this — is
+# `<REDACTED:41>` and its surroundings, never the value. A tool that reports a
+# leak by repeating it has made a second leak, and this one is read by the
+# people least able to afford that.
+#
+# ── the patterns are not duplicated here ────────────────────────────────────
+# Detection is secrets-redact --filter, the same code path the hook uses. A
+# copy of the tier-1 regular expression in this file would drift from the hook
+# within a release, and a scanner that disagrees with the guard is worse than
+# no scanner: it reports clean on exactly the values the guard has learned to
+# catch since.
+set -uo pipefail
+
+REDACT=""
+for cand in "${SECRETS_REDACT:-}" \
+            "$(dirname "${BASH_SOURCE[0]}")/../bin/secrets-redact" \
+            "$HOME/.local/bin/secrets-redact"; do
+    [ -n "$cand" ] && [ -x "$cand" ] && { REDACT="$cand"; break; }
+done
+[ -n "$REDACT" ] || {
+    echo "scan-transcripts: no secrets-redact found" >&2
+    echo "  set SECRETS_REDACT to its path" >&2
+    exit 2
+}
+
+mode=full
+paths=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --quiet|-q) mode=quiet ;;
+        --files|-l) mode=files ;;
+        --path|-p)  shift; [ $# -gt 0 ] || { echo "--path needs a directory" >&2; exit 2; }
+                    paths+=("$1") ;;
+        -h|--help)  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *)          echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+# The stores this machine might have. A missing one is not an error — most
+# machines run one assistant, not three.
+if [ ${#paths[@]} -eq 0 ]; then
+    for d in "$HOME/.claude/projects" \
+             "$HOME/.codex/sessions" \
+             "$HOME/.local/share/opencode" \
+             "$HOME/.local/share/rtk/tee"; do
+        [ -d "$d" ] && paths+=("$d")
+    done
+fi
+[ ${#paths[@]} -gt 0 ] || { echo "scan-transcripts: nothing to scan" >&2; exit 2; }
+
+tmp="$(mktemp -d)" || exit 2
+trap 'rm -rf "$tmp"' EXIT
+
+# Line-aligned comparison without holding either file in memory: awk reads the
+# masked copy on stdin and pulls the matching original line through getline.
+# The filter is line-oriented, so line N of one is line N of the other.
+#
+# Only the masked side is ever printed. A line that already contained the
+# literal text "<REDACTED:" — a transcript of a session that ran this very tool
+# — comes back identical and is not a finding.
+EXCERPT_AWK='
+{
+    if ((getline orig < ORIG) <= 0) next
+    if (orig == $0) next
+    line = $0
+    while (match(line, /<REDACTED:[0-9]+>/)) {
+        s = RSTART
+        from = s - 40; if (from < 1) from = 1
+        len = (s - from) + RLENGTH + 25
+        printf "  %s:%d: …%s…\n", FNAME, FNR, substr(line, from, len)
+        line = substr(line, s + RLENGTH)
+    }
+}
+'
+
+# The same pairing, counting instead of printing.
+COUNT_AWK='
+{ if ((getline orig < ORIG) <= 0) next; if (orig != $0) c++ }
+END { print c + 0 }
+'
+
+total_files=0
+total_hits=0
+hit_files=0
+
+while IFS= read -r f; do
+    total_files=$((total_files + 1))
+    # A file with nothing secret-shaped costs one pass and no temporary copy.
+    "$REDACT" --filter < "$f" > "$tmp/masked" 2>/dev/null
+    grep -q '<REDACTED:' "$tmp/masked" || continue
+
+    n="$(awk -v ORIG="$f" "$COUNT_AWK" "$tmp/masked" 2>/dev/null)"
+    [ "${n:-0}" -gt 0 ] || continue
+
+    hit_files=$((hit_files + 1))
+    total_hits=$((total_hits + n))
+
+    case "$mode" in
+        files) printf '%s\n' "$f" ;;
+        quiet) printf '%s  (%s line(s) with a credential)\n' "$f" "$n" ;;
+        full)
+            printf '\n%s  — %s line(s) with a credential\n' "$f" "$n"
+            awk -v ORIG="$f" -v FNAME="$f" "$EXCERPT_AWK" \
+                "$tmp/masked" 2>/dev/null | head -20
+            ;;
+    esac
+done < <(find "${paths[@]}" -type f \
+              \( -name '*.jsonl' -o -name '*.json' -o -name '*.log' -o -name '*.db' \) \
+              -size -200M 2>/dev/null | sort)
+
+if [ "$mode" != files ]; then
+    printf '\nscanned %d file(s); %d with findings, %d line(s) in total\n' \
+        "$total_files" "$hit_files" "$total_hits"
+    if [ "$hit_files" -gt 0 ]; then
+        printf '\nEvery value above is already on disk and may already be in a\n'
+        printf 'backup or a search index. Rotate them; do not reason about who\n'
+        printf 'might have read the file.\n'
+    fi
+fi
+
+[ "$hit_files" -eq 0 ]

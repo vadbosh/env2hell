@@ -72,7 +72,15 @@ CONFIG = {
     "opencode": _opencode_config(),
 }
 
-MATCHER = {"claude": "Bash", "codex": "^Bash$"}
+# The guard inspects a command line before it runs, so it only has meaning for
+# the shell tool. The redactor inspects a result after the fact, and a result
+# carrying a credential does not have to have come from a shell: `Read` on a
+# .env, an id_rsa or a kubeconfig hands the file over verbatim, and `Grep`
+# returns matching lines. Measured 2026-09-14: a Read of a file holding a
+# GitLab token put the token in the transcript untouched, because the hook was
+# wired for Bash alone.
+GUARD_MATCHER = {"claude": "Bash", "codex": "^Bash$"}
+REDACT_MATCHER = {"claude": "Bash|Read|Grep", "codex": "^Bash$"}
 
 # Assistants whose hook contract can replace a tool result once it exists, and
 # those that can only be told about it. Codex's PostToolUseOutcome carries
@@ -150,7 +158,7 @@ def save(path: str, data, dry_run: bool) -> None:
 
 def hook_entry(ide: str, guard: str) -> dict:
     return {
-        "matcher": MATCHER[ide],
+        "matcher": GUARD_MATCHER[ide],
         "hooks": [{
             "type": "command",
             "command": guard,
@@ -220,6 +228,13 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
 
     if present:
         for entry in present:
+            # An install made before the matcher widened is still wired for Bash
+            # alone, and re-running the installer is the only thing that will
+            # ever look at it. Widening it here is what makes the Read and Grep
+            # coverage reach a machine that already had the hook.
+            if entry.get("matcher") != REDACT_MATCHER[ide]:
+                entry["matcher"] = REDACT_MATCHER[ide]
+                changed.append(f"post-hook matcher set to {REDACT_MATCHER[ide]}")
             for h in entry.get("hooks", []):
                 if "secrets-redact" in str(h.get("command", "")) and h["command"] != redact:
                     h["command"] = redact
@@ -227,7 +242,7 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
         return changed
 
     post.append({
-        "matcher": MATCHER[ide],
+        "matcher": REDACT_MATCHER[ide],
         "hooks": [{
             "type": "command",
             "command": redact,
@@ -301,7 +316,7 @@ def main() -> int:
         print(f"    config not found: {path}")
         return 3
 
-    if args.ide in MATCHER and not args.guard and not args.remove:
+    if args.ide in GUARD_MATCHER and not args.guard and not args.remove:
         print("    --guard is required", file=sys.stderr)
         return 1
 
