@@ -218,6 +218,7 @@ something you run when you have a reason to, not something the assistant calls.
 ./tests/test_redact.sh         # the redactor: patterns, result shapes, size
 ./tests/test_safe_env.sh       # safe-env
 ./tests/test_scan.sh           # the transcript scanner
+./tests/test_install.sh        # the installer, run three times over
 
 ./tests/test_guard.sh    --pwsh   # the same cases against the PowerShell ports
 ./tests/test_redact.sh   --pwsh

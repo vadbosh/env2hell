@@ -223,6 +223,7 @@ credential by design. --include-stores to scan them too.
 ./tests/test_redact.sh         # маскирование: шаблоны, формы результата, объём
 ./tests/test_safe_env.sh       # safe-env
 ./tests/test_scan.sh           # сканер транскриптов
+./tests/test_install.sh        # установщик, прогнанный трижды
 
 ./tests/test_guard.sh    --pwsh   # те же случаи против версий для PowerShell
 ./tests/test_redact.sh   --pwsh
