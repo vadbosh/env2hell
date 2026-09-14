@@ -84,6 +84,31 @@ $Labelled = @(
     [regex]::new('(?<head>' + $Label + '\s+"?)(?<val>'       + $Value + ')', 'IgnoreCase')   # --pass X, --token X
 )
 
+# Tier 2 fires on a label followed by any long-enough run of token characters,
+# and that description also fits a name. Measured 2026-09-14 over 69 Codex
+# transcripts: of 51 flagged lines, about 35 were an identifier in source code,
+# a metavar in --help output, a Terraform reference or a Kubernetes object name.
+# Reading a file with `outputTokens: usage.outputTokens` handed the model
+# `<REDACTED:18>` where the name should be.
+#
+# A credential rarely looks like a name. Each rule is narrow on purpose: the
+# metavar rule demands an underscore rather than matching upper case alone,
+# because a Huawei access key is 20 characters of uppercase and digits.
+$NameShapes = @(
+    '^\$'                                  # $VAR, ${VAR}
+    '^(var|data|local|module|each|self)\.'  # Terraform reference
+    '^[~.]?/'                               # /path ./path ~/path
+    '^[A-Za-z_][A-Za-z_.]*\.[A-Za-z_.]*$'   # pkg.field.name
+    '^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$'         # ANTHROPIC_API_KEY
+    '^[a-z]+(-[a-z]+)+$'                    # prometheus-operator
+    '^[a-z]+(_[a-z]+)+$'                    # aws_secrets_manager
+)
+
+function Test-Name([string]$Value) {
+    foreach ($p in $NameShapes) { if ($Value -cmatch $p) { return $true } }
+    return $false
+}
+
 $script:Hits = 0
 
 function Get-Mask([string]$Value) { "<REDACTED:$($Value.Length)>" }
@@ -97,7 +122,11 @@ function Edit-Line([string]$Line) {
     # `--pass <REDACTED:32>`, or the model cannot tell what was removed.
     foreach ($re in $Labelled) {
         $out = $re.Replace($out, {
-            param($m) $script:Hits++; $m.Groups['head'].Value + (Get-Mask $m.Groups['val'].Value)
+            param($m)
+            $v = $m.Groups['val'].Value
+            if (Test-Name $v) { return $m.Value }     # a name, not a value
+            $script:Hits++
+            $m.Groups['head'].Value + (Get-Mask $v)
         })
     }
     return $out

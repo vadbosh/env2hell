@@ -117,6 +117,56 @@ check_labelled "HW_SECRET_KEY: $HEX"         'HW_SECRET_KEY:'
 check_labelled "OS_SECRET_KEY=$HEX"          'OS_SECRET_KEY='
 check_labelled "HUAWEICLOUD_SECRET_KEY=$HEX" 'HUAWEICLOUD_SECRET_KEY='
 
+# ── a label followed by a name is not a secret ──────────────────────────────
+# Tier 2 keys on a label plus any run of 16+ token characters, and an ordinary
+# identifier fits that exactly. Measured 2026-09-14 over 69 Codex transcripts:
+# of 51 flagged lines about 35 were a name — `usage.outputTokens` in JavaScript,
+# `ANTHROPIC_API_KEY` as a metavar in --help output, `data.aws_eks_cluster_auth
+# .this.token` in Terraform, a Kubernetes object name after `get secret`.
+#
+# In the hook that is not noise, it is damage: the model was handed
+# `<REDACTED:18>` where the variable name should be. Both directions are
+# asserted, because a filter written too wide stops masking real keys — and the
+# shapes it must not take are the ones a cloud vendor chose: a Huawei access key
+# is 20 characters of upper case and digits, which is why the metavar rule
+# requires an underscore instead of matching upper case alone.
+#
+# --filter reports the verdict in its exit status, which is what is read here:
+# comparing the text would be comparing it against a hook that may also have
+# masked this very test run's output.
+verdict () {                            # verdict <line> -> "mask" | "keep"
+    if printf '%s\n' "$1" | run_tool --filter >/dev/null 2>&1; then
+        printf 'mask'
+    else
+        printf 'keep'
+    fi
+}
+
+check_shape () {                        # <mask|keep> <line> <what it is>
+    local want="$1" line="$2" what="$3" got
+    got="$(verdict "$line")"
+    if [ "$got" = "$want" ]; then
+        ok "$want: $what"
+    else
+        no "$want: $what" "got $got"
+    fi
+}
+
+check_shape keep 'output_tokens: usage.outputTokens,'            'a dotted identifier in source'
+check_shape keep '  --anthropic-api-key ANTHROPIC_API_KEY'       'a metavar in --help output'
+check_shape keep '  token = data.aws_eks_cluster_auth.this.token' 'a Terraform reference'
+check_shape keep 'client_secret = var.oidc_application_client_secret' 'a Terraform variable'
+check_shape keep 'kubectl get secret prometheus-operator -n mon' 'a kebab-case object name'
+check_shape keep 'token = $GITHUB_TOKEN_VALUE'                   'a shell variable, not its value'
+check_shape keep 'private_key = /etc/ssl/private/server.key'     'a path'
+
+check_shape mask "croc --pass $HEX code"                         'a labelled hex password'
+check_shape mask "TOKEN: $HEX"                                   'an uppercase label'
+check_shape mask 'HW_ACCESS_KEY=ABCD1234EFGH5678IJKL'            'a Huawei access key: caps and digits, no underscore'
+check_shape mask 'HW_SECRET_KEY=aB3xY7zQ1mN8pR4sT6uV0wX2yZ5cD9eF1gH3jK5l' 'a Huawei secret: mixed base62'
+check_shape mask 'password=Xk8mP2qR9vT4wY7z'                     'a mixed-case password'
+check_shape mask 'api_key=0123456789abcdef0123'                  'a bare hex api key'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then
