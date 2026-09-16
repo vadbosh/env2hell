@@ -130,10 +130,14 @@ The installer ends with a check of its own: it feeds `env` and `echo hi` to the
 guard and expects exit 2 and exit 0. To go further:
 
 ```bash
-./tests/test_guard.sh                       # 47 cases, the POSIX guard
-./tests/test_guard.sh --pwsh                # the same 47, the PowerShell port
+./tests/test_guard.sh                       # the POSIX guard
+./tests/test_guard.sh --pwsh                # the same cases, the PowerShell port
 ./tests/test_guard.sh --guard ~/.local/bin/secrets-guard   # the installed copy
 ```
+
+Each run ends in `passed N, failed 0`. The number is deliberately not repeated
+here: it moves with every case added, and a count in prose goes stale silently
+while the runner's own line never does.
 
 To see it work inside the assistant, ask it to run `env`. It should come back
 with the denial message rather than a wall of variables.

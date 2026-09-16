@@ -137,10 +137,14 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 подробнее:
 
 ```bash
-./tests/test_guard.sh                       # 47 случаев, версия для POSIX
-./tests/test_guard.sh --pwsh                # те же 47, версия для PowerShell
+./tests/test_guard.sh                       # версия для POSIX
+./tests/test_guard.sh --pwsh                # те же случаи, версия для PowerShell
 ./tests/test_guard.sh --guard ~/.local/bin/secrets-guard   # установленная копия
 ```
+
+Каждый прогон заканчивается строкой `passed N, failed 0`. Число здесь намеренно
+не повторяется: оно меняется с каждым добавленным случаем, и в тексте устаревает
+молча, а строка самого прогона — нет.
 
 Чтобы увидеть работу внутри ассистента, попросите его выполнить `env`. В ответ
 должно прийти сообщение об отказе, а не список переменных.
