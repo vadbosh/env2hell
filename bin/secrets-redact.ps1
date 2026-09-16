@@ -12,8 +12,11 @@
     This runs after the tool and replaces the output before the model sees it.
     Two tiers, deliberately:
 
-      tier 1  provider-shaped tokens (ghp_, glpat-, AKIA, JWT, private key
-              blocks, credentials inside a URL). Unambiguous — masked anywhere.
+      tier 1  provider-shaped tokens (ghp_, glpat-, AKIA, JWT, credentials
+              inside a URL). Unambiguous — masked anywhere. A private key is
+              the one member of this tier that is a *block* rather than a
+              match: the header line starts it, the footer ends it, and the
+              body between them is replaced line for line.
 
       tier 2  a high-entropy run only when a label on the same line says it is
               a secret: --pass, --token, password=, Authorization: Bearer, or
@@ -25,6 +28,16 @@
     Fails open: unparsable input or nothing to mask means exit 0 with no
     output, which leaves the tool result exactly as it was. A hook that breaks
     the session is worse than a hook that misses one secret.
+
+    The exit code means different things in the two roles:
+
+      as a hook (JSON in)     always 0, including "nothing matched". That is
+                              the fail-open contract above.
+      as a filter (text in)   0 something was masked, 1 the text came through
+                              unchanged — grep's convention, so a caller can
+                              skip the assignment rather than rewrite a string
+                              with itself. In a pipeline that treats non-zero
+                              as failure, that 1 is a trap.
 
 .EXAMPLE
     Get-Content out.txt | secrets-redact.ps1 --filter
