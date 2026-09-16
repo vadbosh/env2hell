@@ -310,6 +310,16 @@ asserting the warning says three.
 
 ## A7 — a killed hook leaves the whole tool result in `/tmp`
 
+**✔ Closed 2026-09-16** (`7fd3692`). Everything goes under
+`${TMPDIR:-/tmp}/secrets-redact/run.XXXXXX`; the parent is `chmod 700` whatever
+the umask says, and each run sweeps sibling run directories older than an hour
+before creating its own. An hour, not "all of them": `lib/patch_config.py` had
+the same sweep take a concurrent patcher's live file, and this is the same
+shape with that lesson in it. Tests: *the scratch directory is private whatever
+the umask says* and *a later run sweeps what a killed one left*, which kills the
+hook mid-payload with `TMPDIR` inside the suite's own directory.
+
+
 **Class: damage.** Not a leak to another user — `mktemp -d` is 0700 — but a
 copy of the output, secrets included, that nothing ever removes.
 
@@ -484,22 +494,22 @@ cases against both" is what the file claims.
    thirteen failing cases first, then one change, then the whole suite with the
    `keep` half read line by line. It found nothing broken there, and the
    corpora diff between the two ports stayed at zero.
-5. **A7** — after A1, because A1 removes most of the kills that cause it.
+5. ~~**A7**~~ — **done 2026-09-16.**
 6. ~~**A8**~~ — **done 2026-09-16**, from the port's behaviour as the model.
 
-**Exposure, as it stands on 2026-09-16.** Seven of eight closed the same day
-they were written up. What remains is A7: a killed run leaves a copy of the tool
-result in `/tmp`, mode 0700, until somebody clears it. Nothing reaches the model
-unmasked.
+**Exposure, as it stands on 2026-09-16.** All eight closed the same day they
+were written up. What is left in this file is B, C and D — text, one
+measurement, and three questions.
 
 ---
 
 # Done when
 
 ```bash
-bash tests/test_redact.sh        | tail -1   # passed 83, failed 0 (66 at the
-                                             #   baseline, +13 A2–A5, +4 A6/A8);
-                                             #   >= 84 when A7 lands
+bash tests/test_redact.sh        | tail -1   # passed 85, failed 0 (66 at the
+                                             #   baseline, +13 A2–A5, +4 A6/A8,
+                                             #   +2 A7)
+bash tests/test_parity.sh        | tail -1   # passed 15, failed 0
 bash tests/test_redact.sh --pwsh | tail -1   # passed 81, failed 0 (the same
                                              #   minus the two jq cases)
 bash tests/test_guard.sh         | tail -1   # passed 76, failed 0
@@ -516,7 +526,7 @@ shellcheck -S style bin/secrets-redact       # info-level only, exit 0
 | A4 | ✔ **closed 2026-09-16** — *a quoted password with punctuation*, *the same in single quotes* |
 | A5 | ✔ **closed 2026-09-16** — *the JSON spelling of a labelled secret*; the name form is kept |
 | A6 | ✔ **closed 2026-09-16** — *the warning counts values, not lines*, and across lines |
-| A7 | a killed run leaves nothing a later run does not sweep |
+| A7 | ✔ **closed 2026-09-16** — *a later run sweeps what a killed one left*, and the scratch parent is 700 |
 | A8 | ✔ **closed 2026-09-16** — *--filter adds no newline the input did not have*, and keeps the one it did |
 | — | the timing pair from A1, recorded in the commit message rather than asserted in a test |
 
@@ -529,7 +539,7 @@ time bin/secrets-redact --filter < /tmp/<your-sandbox>/p1m.txt > /dev/null
 
 ---
 
-**A: 8 — 7 closed (A1–A6, A8), 1 open (A7). B: 2, C: 1, D: 3 open questions.**
+**A: 8 — all closed. B: 2, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact.md`. Sandbox with every
 probe and payload: `/tmp/tmp.snGXbDrywJ` (`r1.sh`, `r2.sh`, the `v-*.awk`

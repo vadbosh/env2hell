@@ -412,6 +412,16 @@ still 600.
 
 ## A7 — Windows installs are missing the Edit/Write/MCP warning, and the failure matcher is narrower
 
+**✔ Closed 2026-09-16** (`101eecd`). `install.ps1` writes the notice entry, tells
+it apart from the replacing one by the flag, and carries the three matchers as
+named variables instead of literals in three functions. The agreement is
+mechanical now: `tests/test_install.sh` reads the constants out of
+`lib/patch_config.py` and the literals out of `install.ps1` and compares them
+one by one — the redactor matcher, the notice matcher, the failure matcher and
+the timeout. That is what the comment claiming "same rule set" was standing in
+for, and what failed for two days.
+
+
 **Class: silent wrong result, Windows only.**
 
 **Where:** the divergence is between `lib/patch_config.py` (`NOTICE_MATCHER`
@@ -880,8 +890,7 @@ reproductions run through.
    assistant might validate was invented.
 4. ~~**A4**~~ — **done 2026-09-16**, with the Opencode test group it needed.
    B1 and B2 closed with it: they were the same defect described in prose.
-5. **A7** — the PowerShell parity fix and the mechanical diff test. Last because
-   it re-ports whatever steps 1–4 changed; doing it earlier means doing it twice.
+5. ~~**A7**~~ — **done 2026-09-16**, last as the order said.
 6. ~~**A1**~~ — **done 2026-09-16**: the number first, then the throughput fix
    it was standing in for.
 
@@ -890,10 +899,8 @@ first and the throughput fix followed the same day, so the window is now results
 larger than roughly 200 MB. `bin/secrets-redact` has its own review, and six of
 its items are open — but none of them is this one.
 
-A7's Windows gap is narrower than it was — the port's ownership logic and its
-redactor timeout are now checked by `tests/test_install.sh` — but the missing
-`Edit|Write|mcp__.*` entry and the narrow failure matcher are still there, and
-still invisible to any test.
+A7 closed the same day: the entry is there, the matcher is wide, and the two
+installers are diffed literal by literal rather than by a comment.
 
 ---
 
@@ -910,10 +917,10 @@ bash tests/test_redact.sh   | tail -1     # passed 66, failed 0 (62 at baseline,
 bash tests/test_redact.sh --pwsh | tail -1  # passed 64, failed 0 (60 at baseline)
 bash tests/test_safe_env.sh | tail -1     # passed  9, failed 0
 bash tests/test_scan.sh     | tail -1     # passed 16, failed 0
-bash tests/test_install.sh  | tail -1     # passed 33, failed 0 today (14 at
+bash tests/test_install.sh  | tail -1     # passed 36, failed 0 (14 at the
                                           #   baseline; +8 A5/A6/A8/A9/A10,
-                                          #   +4 A2/A3, +2 A1, +1 the port,
-                                          #   +4 A4); >= 35 when A7 lands
+                                          #   +4 A2/A3, +4 A4, +1 the port,
+                                          #   +5 A1/A7 matcher parity)
 pwsh -NoProfile -File tests/test_ownership.ps1   # passed 8, failed 0
 python3 -m py_compile lib/patch_config.py # no output, exit 0
 shellcheck -S style install.sh uninstall.sh release.sh bin/* tools/* tests/*.sh
@@ -929,7 +936,7 @@ New groups that must appear in `tests/test_install.sh`, one per item:
 | A4 | ✔ **closed 2026-09-16** — *a commented .jsonc is refused loudly and left untouched*, *a .jsonc with no comments in it is wired normally*, *three runs write the rules once*, *a missing configuration exits 3, not 1* |
 | A5 | ✔ **closed 2026-09-16** — *a symlinked config stays a link and the target is wired* |
 | A6 | ✔ **closed 2026-09-16** — *a 600 config is still 600 after a patch* |
-| A7 | ◐ the timeout is diffed against `lib/patch_config.py` and the ownership logic is exercised; the matchers are still unchecked, and the `Edit\|Write\|mcp__.*` entry is still missing |
+| A7 | ✔ **closed 2026-09-16** — all three matchers and the timeout diffed against `lib/patch_config.py`, and the notice entry is written |
 | A8 | ✔ **closed 2026-09-16** — *a config holding a list is refused with a sentence* (exit 1, no `Traceback`) |
 | A9 | ✔ **closed 2026-09-16** — *config untouched*, *the leftover copy is not world-readable*, *the next run sweeps a stale temp file*. The original wording asked for no leftover at all; a SIGKILL cannot promise that, so the assertion is mode + sweep |
 | A10 | ◐ **half closed 2026-09-16** — *two patchers at once both finish cleanly* and *the config a race leaves behind is readable and wired once*. Both edits surviving is still open: see D5 |
@@ -949,8 +956,8 @@ rg -n '"timeout"' lib/patch_config.py install.ps1
 
 ---
 
-**A: 10 — 9 closed (A1, A2, A3, A4, A5, A6, A8, A9, A10 half), 1 open: A7
-(partly). B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
+**A: 10 — all closed (A10 half: the crash is gone, last-writer-wins remains,
+see D5). B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
 
 File: `/home/env2hell/review-2026-09-15-patch_config.md`. Sandbox with every
 probe script and payload: `/tmp/tmp.snGXbDrywJ` (nothing in it is deleted).

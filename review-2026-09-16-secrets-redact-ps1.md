@@ -169,7 +169,12 @@ on a real machine, which this pass had no way to run.
 
 # D. Judgement on the design
 
-**D1 — two implementations, one behaviour, and only the patterns are diffed.**
+**D1 — answered 2026-09-16 by `tests/test_parity.sh`** (15 cases: four
+corpora of real output, six byte-level edges, the four hook replies and the
+warning's count). The reasoning that asked for it, kept because it is what
+a later reader will re-derive:
+
+**two implementations, one behaviour, and only the patterns are diffed.**
 The suite asserts that the tier-1 list matches `bin/safe-env.ps1` character for
 character. Nothing compares the *port* with the *POSIX version*: the 66-vs-64
 case counts come from running the same file twice with a different tool, which
@@ -266,7 +271,7 @@ pwsh -NoProfile -Command '$e=$null; [System.Management.Automation.Language.Parse
 |---|---|
 | A1 | only if taken: a multi-MB payload through `--filter` under `timeout 30` comes back non-empty |
 | A2 | ✔ **closed 2026-09-16** — `tests/test_redact.sh --pwsh` `passed 77, failed 0`, including the two private-key blocks, which cannot pass without per-line semantics |
-| D1 | a parity case in the suite: one corpus, both ports, `diff` empty |
+| D1 | ✔ **done 2026-09-16** — `bash tests/test_parity.sh` `passed 15, failed 0` |
 
 ---
 
