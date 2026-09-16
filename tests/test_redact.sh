@@ -166,6 +166,8 @@ check_shape keep 'private_key = /etc/ssl/private/server.key'     'a path'
 # nothing pinned that, so a later widening of tier 2 would turn every `ls -la`
 # of a config directory into <REDACTED:…> and nobody would learn it here.
 check_shape keep 'settings.json.bak.20260915-224647'             'a timestamped backup name'
+# shellcheck disable=SC2088  # the tilde is the text under test, not a path to
+                             # expand — this is how such a name is printed
 check_shape keep '~/.claude/settings.json.bak.20260915-224647'   'the same with a path'
 check_shape keep '-rw------- 1 root root 4096 Sep 15 22:46 settings.json.bak.20260915-224647' 'an ls -la line carrying one'
 check_shape keep 'settings.json.env2hell.tmp'                    'the installer temp name'
@@ -244,6 +246,53 @@ if grep -qF 'and this ordinary line comes after it' <<< "$prose"; then
 else
     no "the phrase in a sentence does not swallow what follows" "got:
 $(printf '%s\n' "$prose" | sed 's/^/        /')"
+fi
+
+# ── the count in the warning, and the bytes on the way out ──────────────────
+# --warn-only is read by a human who decides whether to rotate. Counting lines
+# instead of values reports fewer credentials than are in the output, and
+# always downwards.
+warn_count () {                         # warn_count <stdout-text> -> the number
+    printf '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_response":{"stdout":"%s","stderr":""}}' "$1" |
+        run_tool --warn-only |
+        jq -r 'try (.hookSpecificOutput.additionalContext | capture("contains (?<n>[0-9]+) credential").n) // "none"'
+}
+
+got="$(warn_count "$GHP $GHP $GHP")"
+if [ "$got" = 3 ]; then
+    ok "the warning counts values, not lines (three on one line)"
+else
+    no "the warning counts values, not lines" "three values on one line, the warning says $got"
+fi
+
+got="$(warn_count "$GHP $GHP\n$GHP $GHP")"
+if [ "$got" = 4 ]; then
+    ok "the warning counts values across lines"
+else
+    no "the warning counts values across lines" "four values on two lines, the warning says $got"
+fi
+
+# awk's print terminates every line, so text that did not end in a newline came
+# back one byte longer. The hook path repairs that; --filter is the mode the
+# Opencode plugin calls, and it never did.
+filter_bytes () {                       # filter_bytes <printf-format> -> byte count
+    # shellcheck disable=SC2059  # the argument IS the format: these cases are
+                                 # about whether a trailing \n is there at all
+    printf "$1" | run_tool --filter 2>/dev/null | wc -c
+}
+in_bytes="$(printf 'x --pass %s' "$HEX" | wc -c)"
+out_bytes="$(filter_bytes "x --pass $HEX")"
+want=$(( in_bytes - ${#HEX} + 13 ))     # <REDACTED:32> is 13 characters
+if [ "$out_bytes" -eq "$want" ]; then
+    ok "--filter adds no newline the input did not have"
+else
+    no "--filter adds no newline the input did not have" \
+       "$in_bytes bytes in, $out_bytes out, expected $want"
+fi
+if [ "$(filter_bytes "x --pass $HEX\n")" -eq $(( want + 1 )) ]; then
+    ok "--filter keeps the newline the input did have"
+else
+    no "--filter keeps the newline the input did have" "got $(filter_bytes "x --pass $HEX\n")"
 fi
 
 check_shape mask "croc --pass $HEX code"                         'a labelled hex password'
