@@ -399,6 +399,10 @@ does. Run it for both ports — the port already passes.
 
 ## B1 — the header documents `--filter`'s exit codes, not the hook's
 
+**✔ Closed 2026-09-16** (`f713e03`). Both roles are stated next to each other,
+in both ports, and the trap is named: `1` from `--filter` means "nothing was
+masked" and reads as failure to `set -e` or a `&&` chain.
+
 **Where:** lines 195–196 say exit 0 means something was masked and 1 means the
 text came through unchanged. That is `--filter`. In hook mode every path exits
 0, by design (I1), including "nothing matched" and "no jq".
@@ -417,6 +421,10 @@ One binary, two roles, and `1` means opposite things in them. A caller with
 `lib/patch_config.py` now does.
 
 ## B2 — the module header says "two tiers" and the file has three passes
+
+**✔ Closed 2026-09-16** (`f713e03`). A1 had already collapsed the three passes
+to two; what the header now also says is that tier 1 has one member that is a
+*block* rather than a match — the private key.
 
 **Where:** lines 14–25 describe tier 1 and tier 2. The program runs `scrub(RE)`
 and then `scrub_labelled` twice, and the reason for the second call — one
@@ -441,23 +449,64 @@ No other measurement in this pass showed a cost worth an item.
 
 # D. Judgement on the design
 
-**D1 — the floor of 16 characters is doing a lot of work.** I3 explains why it
-cannot be lowered: an md5 is 32 and a git SHA is 40, so length cannot decide.
-But it also means a 12-character password with a label in front of it goes
-through, and short passwords are common. Worth deciding deliberately rather
-than by inheritance: with a label present, is 8 enough?
+**D1 — answered 2026-09-16: the floor stays at 16 for a bare value, and a
+quoted one already goes from 8.** Asked and measured properly, because the
+first measurement was not enough to decide on.
 
-**D2 — `is_name` is a list of shapes, and lists go stale.** Seven rules today,
-each with a `keep` case. The risk is not that a rule is wrong; it is that the
-next widening of VALUE or LABEL makes an eighth shape necessary and nobody
-notices until a name is masked in someone's session. The suite's `keep` half is
-the guard — it deserves to grow with every A2–A5 fix here.
+A corpus of 126 KB of real output — `ls -la`, sixty lines of `git log`, both
+READMEs, this project's own sources, three `--help` texts — masks 11 lines at
+a floor of 16, **the same 11** at 12, and 12 at a floor of 8, where the extra
+one is prose from the README: `a token <REDACTED:8> in a remote URL`.
 
-**D3 — the port is a second implementation of every decision above.**
-`bin/secrets-redact.ps1` is 329 lines and carries its own copy of the patterns.
-`tests/test_redact.sh --pwsh` runs 64 cases against it, two fewer than the
-POSIX side runs: the difference is worth a line somewhere, because "the same
-cases against both" is what the file claims.
+That reads like "12 is free", and it is not. The corpus simply had no line of
+the shape *label + a word of twelve characters or more*. One exists in ordinary
+documentation:
+
+```
+  floor 16   the token configuration lives in git      keep
+  floor 12   the token configuration lives in git      MASK   <- "configuration"
+```
+
+**The mitigation that looked obvious breaks the flagship case.** Adding "a bare
+lowercase word is a word, not a secret" (`^[a-z]+$`) to `is_name` keeps
+`configuration` — and also keeps `deadbeefdeadbeefdeadbeefdeadbeef`, the
+md5-shaped relay password this hook was written for, because `deadbeef` is
+letters all the way down. Verified by exit status, not by reading the text:
+
+```
+                                       floor 16   floor 12   12 + the word rule
+  password=hunter2Trust                 keep       mask       mask
+  password=deadbeef… (32 hex)           mask       mask       keep   <- the case
+  the token configuration lives …       keep       mask       keep
+```
+
+**And the gap is smaller than it looked.** A quoted value already goes from
+eight characters, because the quotes are a boundary the writer supplied:
+
+```
+  password = "S3cr3t!Pass"     mask      password=hunter2Trust    keep
+  PGPASSWORD='Tr0ub4dor'       mask      password=Tr0ub4dor       keep
+```
+
+So what 16 actually costs is an *unquoted* short password on a labelled line,
+and what lowering it costs is every long word after the word "token" in
+documentation. The floor stays. **Read by exit status, always** — the session's
+own redactor masks these samples in the terminal, which is how the first reading
+of this experiment came out wrong.
+
+**D2 — the `is_name` list.** Unchanged as a judgement: seven shapes, each with a
+`keep` case, and the risk is the eighth nobody notices. What today added is the
+evidence for how the list fails — see D1: a rule that looks obviously right can
+delete the one case the tool exists for, and only an exit-status probe against a
+real value says so. Any new shape belongs in `tests/test_redact.sh` in the same
+commit, with a `mask` case for a real secret of that shape beside it.
+
+**D3 — answered: the case counts differ by four, and every one is accounted
+for.** `tests/test_redact.sh` runs 85 cases and `--pwsh` runs 81. Two are about
+jq, which the port does not use (*fails open when jq is unavailable*,
+*--filter needs no jq*); two are the scratch-directory group, which the port has
+no equivalent of because it writes nothing to disk. `tests/test_parity.sh` is
+what covers the rest — same bytes, both ports, diffed.
 
 ---
 
@@ -539,7 +588,7 @@ time bin/secrets-redact --filter < /tmp/<your-sandbox>/p1m.txt > /dev/null
 
 ---
 
-**A: 8 — all closed. B: 2, C: 1, D: 3 open questions.**
+**A: 8 — all closed. B: 2 — both closed. C: 1. D: 3 — all three answered.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact.md`. Sandbox with every
 probe and payload: `/tmp/tmp.snGXbDrywJ` (`r1.sh`, `r2.sh`, the `v-*.awk`

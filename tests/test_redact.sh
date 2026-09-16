@@ -351,6 +351,16 @@ else
     no "--filter keeps the newline the input did have" "got $(filter_bytes "x --pass $HEX\n")"
 fi
 
+# The floor of 16 for a bare value, decided 2026-09-16 rather than inherited.
+# Lowering it to 12 masks the word after "token" in ordinary documentation, and
+# the obvious mitigation — "a bare lowercase word is prose" — keeps the
+# md5-shaped relay password this hook was written for, because `deadbeef` is
+# letters all the way down. Both directions are pinned here.
+check_shape keep 'the token configuration lives in git'           'a long word after a label, in prose'
+check_shape keep 'pass the credentials file to the job'           'the same, another label'
+check_shape mask 'password = "S3cr3t!Pass"'                       'a short password, but quoted'
+check_shape keep 'password=Tr0ub4dor'                             'a short password, unquoted: the accepted gap'
+
 check_shape mask "croc --pass $HEX code"                         'a labelled hex password'
 check_shape mask "TOKEN: $HEX"                                   'an uppercase label'
 check_shape mask 'HW_ACCESS_KEY=ABCD1234EFGH5678IJKL'            'a Huawei access key: caps and digits, no underscore'
