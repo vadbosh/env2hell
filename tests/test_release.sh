@@ -64,7 +64,10 @@ shipped="$(grep -oE 'install_file "\$SRC/(bin|rules)/[^"]+"' "$SRC/install.sh" |
 unknown=""
 for name in $shipped; do
     cp "$repo/bin/$name" "$tmp/$name" 2>/dev/null || cp "$repo/rules/$name" "$tmp/$name" 2>/dev/null || continue
-    if run_check "$tmp/$name" | grep -q 'mirror ignored'; then
+    # A here-string, not a pipe: `grep -q` exits at the first match and the
+    # producer takes SIGPIPE. tests/test_guard.sh polices that, and caught this
+    # line the first time this file ran.
+    if grep -q 'mirror ignored' <<< "$(run_check "$tmp/$name")"; then
         unknown="$unknown $name"
     fi
 done
