@@ -156,17 +156,30 @@ function Test-OurCommand ($Command, $Tool) {
     return ($leaf -replace '\.[^.]*$', '') -eq $Tool
 }
 
+# `$o.PSObject.Properties.Name` throws under Set-StrictMode when the object has
+# no properties at all — member enumeration over an empty collection is an error
+# there, not an empty result. A freshly created settings.json holding `{}` is
+# exactly that object, so the installer died on the first assistant it touched
+# with: "The property 'Name' cannot be found on this object." Found 2026-09-16,
+# the first time install.ps1 was run end to end rather than parsed.
+function Test-Property ($Object, [string]$Name) {
+    foreach ($p in $Object.PSObject.Properties) {
+        if ($p.Name -eq $Name) { return $true }
+    }
+    return $false
+}
+
 function Set-Property ($Object, $Name, $Value) {
-    if ($Object.PSObject.Properties.Name -contains $Name) { $Object.$Name = $Value }
+    if (Test-Property $Object $Name) { $Object.$Name = $Value }
     else { $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
 }
 
 function Update-HookConfig ($Name, $Path, $GuardPath) {
     $data = Read-Json $Path
-    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+    if (-not (Test-Property $data 'hooks')) {
         Set-Property $data 'hooks' ([pscustomobject]@{})
     }
-    if ($data.hooks.PSObject.Properties.Name -notcontains 'PreToolUse') {
+    if (-not (Test-Property $data.hooks 'PreToolUse')) {
         Set-Property $data.hooks 'PreToolUse' @()
     }
 
@@ -205,10 +218,10 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
 # matching lines.
 function Update-RedactConfig ($Name, $Path, $RedactPath) {
     $data = Read-Json $Path
-    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+    if (-not (Test-Property $data 'hooks')) {
         Set-Property $data 'hooks' ([pscustomobject]@{})
     }
-    if ($data.hooks.PSObject.Properties.Name -notcontains 'PostToolUse') {
+    if (-not (Test-Property $data.hooks 'PostToolUse')) {
         Set-Property $data.hooks 'PostToolUse' @()
     }
 
@@ -275,10 +288,10 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
     if ($Name -ne 'claude') { return }        # the event is Claude Code's
 
     $data = Read-Json $Path
-    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+    if (-not (Test-Property $data 'hooks')) {
         Set-Property $data 'hooks' ([pscustomobject]@{})
     }
-    if ($data.hooks.PSObject.Properties.Name -notcontains 'PostToolUseFailure') {
+    if (-not (Test-Property $data.hooks 'PostToolUseFailure')) {
         Set-Property $data.hooks 'PostToolUseFailure' @()
     }
 
@@ -321,10 +334,10 @@ function Update-NoticeConfig ($Name, $Path, $RedactPath) {
     if ($Name -ne 'claude') { return }        # the other assistants warn anyway
 
     $data = Read-Json $Path
-    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+    if (-not (Test-Property $data 'hooks')) {
         Set-Property $data 'hooks' ([pscustomobject]@{})
     }
-    if ($data.hooks.PSObject.Properties.Name -notcontains 'PostToolUse') {
+    if (-not (Test-Property $data.hooks 'PostToolUse')) {
         Set-Property $data.hooks 'PostToolUse' @()
     }
 
@@ -371,7 +384,7 @@ function Update-OpencodeConfig ($Path, $WithRule) {
     # it into instructions/ is not enough.
     $ruleEntry = '~/.config/opencode/instructions/secrets-hygiene.md'
     if ($WithRule) {
-        if ($data.PSObject.Properties.Name -notcontains 'instructions') {
+        if (-not (Test-Property $data 'instructions')) {
             Set-Property $data 'instructions' @()
         }
         if (@($data.instructions) -notcontains $ruleEntry) {
@@ -380,16 +393,16 @@ function Update-OpencodeConfig ($Path, $WithRule) {
         }
     }
 
-    if ($data.PSObject.Properties.Name -notcontains 'plugin') { Set-Property $data 'plugin' @() }
+    if (-not (Test-Property $data 'plugin')) { Set-Property $data 'plugin' @() }
     if (@($data.plugin) -notcontains './plugins/secrets-guard.ts') {
         $data.plugin = @(@($data.plugin) + './plugins/secrets-guard.ts')
         $changed++
     }
 
-    if ($data.PSObject.Properties.Name -notcontains 'permission') {
+    if (-not (Test-Property $data 'permission')) {
         Set-Property $data 'permission' ([pscustomobject]@{})
     }
-    if ($data.permission.PSObject.Properties.Name -notcontains 'bash') {
+    if (-not (Test-Property $data.permission 'bash')) {
         Set-Property $data.permission 'bash' ([pscustomobject]@{})
     }
     $bash = $data.permission.bash
@@ -399,7 +412,7 @@ function Update-OpencodeConfig ($Path, $WithRule) {
     foreach ($r in $Readers) { foreach ($f in $SecretFiles) { $wanted["$r $f"] = 'deny' } }
 
     foreach ($k in $wanted.Keys) {
-        $current = if ($bash.PSObject.Properties.Name -contains $k) { $bash.$k } else { $null }
+        $current = if (Test-Property $bash $k) { $bash.$k } else { $null }
         if ($current -ne $wanted[$k]) { Set-Property $bash $k $wanted[$k]; $changed++ }
     }
 

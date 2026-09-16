@@ -573,5 +573,91 @@ else
     printf '  skip  install.ps1 ownership — pwsh not installed\n'
 fi
 
+# ── install.ps1, run rather than read ───────────────────────────────────────
+# Until 2026-09-16 nothing had ever executed this file: the parity checks above
+# read its literals, and tests/test_ownership.ps1 lifts one function out of it.
+# The first end-to-end run died on the first assistant it touched, with
+# "The property 'Name' cannot be found on this object" — `$o.PSObject.Properties
+# .Name` throws under Set-StrictMode when the object has no properties, and a
+# settings.json holding `{}` is exactly that object.
+#
+# USERPROFILE and LOCALAPPDATA are what the installer reads for its paths, so
+# pointing them at a temporary directory keeps this as far from the real
+# configuration as the rest of this file.
+if command -v pwsh >/dev/null 2>&1; then
+    ps_home="$tmp/pshome"
+    mkdir -p "$ps_home/.claude" "$ps_home/.codex" "$ps_home/.config/opencode"
+    for f in "$ps_home/.claude/settings.json" "$ps_home/.codex/hooks.json" \
+             "$ps_home/.config/opencode/opencode.json"; do
+        printf '{}\n' > "$f"
+    done
+
+    ps_install () {             # ps_install — one run, output discarded
+        USERPROFILE="$ps_home" LOCALAPPDATA="$ps_home/AppData" \
+            pwsh -NoProfile -File "$SRC/install.ps1" -BinDir "$ps_home/bin" \
+            >"$tmp/ps-install.out" 2>&1
+    }
+
+    ps_shape () {               # ps_shape — the wiring, as one sorted list
+        python3 - "$ps_home/.claude/settings.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+out = []
+for event, blocks in sorted(d.get("hooks", {}).items()):
+    for b in blocks:
+        for h in b.get("hooks", []):
+            out.append(f"{event}\t{b.get('matcher')}\ttimeout={h.get('timeout')}")
+print("\n".join(sorted(out)))
+PY
+    }
+
+    if ps_install; then
+        ok "install.ps1: a run over an empty configuration finishes"
+    else
+        no "install.ps1: a run over an empty configuration finishes" \
+           "$(tail -5 "$tmp/ps-install.out" | sed 's/^/        /')"
+    fi
+
+    ps_first="$(ps_shape)"
+    ps_install; ps_install
+    if [ "$ps_first" = "$(ps_shape)" ]; then
+        ok "install.ps1: three runs leave the same wiring"
+    else
+        no "install.ps1: three runs leave the same wiring" "the wiring moved:
+$(diff <(printf '%s\n' "$ps_first") <(ps_shape) | sed 's/^/        /')"
+    fi
+
+    # One line per entry the port is supposed to write, named the way a reader
+    # would name it rather than by the regex that finds it.
+    while IFS='|' read -r label want; do
+        [ -n "$label" ] || continue
+        if grep -qE "$want" <<< "$ps_first"; then
+            ok "install.ps1: wired $label"
+        else
+            no "install.ps1: wired $label" "not found in:
+$(printf '%s\n' "$ps_first" | sed 's/^/        /')"
+        fi
+    done <<'ENTRIES'
+the guard, before the command|PreToolUse.*Bash.*timeout=5
+the redactor, on results it can rewrite|PostToolUse.*Bash.Read.Grep.*timeout=
+the notice, on the ones it cannot|PostToolUse.*Edit.Write.mcp__.*timeout=
+the failure warning|PostToolUseFailure.*Edit.Write.mcp__.*timeout=
+ENTRIES
+
+    oc_written="$(python3 - "$ps_home/.config/opencode/opencode.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(len(d.get("permission", {}).get("bash", {})), len(d.get("plugin", [])))
+PY
+)"
+    if [ "$oc_written" = "394 1" ]; then
+        ok "install.ps1: opencode gets the same 394 rules and the plugin"
+    else
+        no "install.ps1: opencode gets the same 394 rules and the plugin" "got [$oc_written]"
+    fi
+else
+    printf '  skip  install.ps1 end to end — pwsh not installed\n'
+fi
+
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
