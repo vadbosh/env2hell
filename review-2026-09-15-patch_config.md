@@ -73,13 +73,18 @@ obvious fix of making the hook block when it cannot finish.
 
 ## A1 — `timeout: 10` drops the redactor on every result over ~1 MB, and it fails open
 
-**◐ Interim measure applied 2026-09-16; the item stays open.** The three
-entries now carry `REDACT_TIMEOUT = 60` (`$RedactTimeout` in `install.ps1`),
-which moves the cliff from ~1 MB to ~5 MB at the measured ~90 KB/s. Nothing
-about the throughput changed, so a result larger than that still reaches the
-model unmasked and unannounced — the repair belongs to `bin/secrets-redact`.
-Tests: *the redactor is given at least 60 s* (a floor, not the value) and
-*install.ps1 gives the redactor the same 60 s as lib/patch_config.py*.
+**✔ Closed 2026-09-16.** Two steps, and the second is the real one. The three
+entries carry `REDACT_TIMEOUT = 60` (`$RedactTimeout` in `install.ps1`), which
+moved the cliff from ~1 MB to ~5 MB; then `a6f7cb8` made the masking pass 33×
+faster — one pattern for both separators, see
+`review-2026-09-16-secrets-redact.md` A1 — so the same 60 s now covers roughly
+200 MB. 1.1 MB takes 0.36 s where it took 10.73 s.
+
+The number stays at 60 rather than going back to 10: it costs nothing when the
+hook finishes in fractions of a second, and it is the margin for a machine
+slower than this one. Tests: *the redactor is given at least 60 s* (a floor,
+not the value) and *install.ps1 gives the redactor the same 60 s as
+lib/patch_config.py*.
 
 **Class: silent wrong result.**
 
@@ -877,11 +882,13 @@ reproductions run through.
    B1 and B2 closed with it: they were the same defect described in prose.
 5. **A7** — the PowerShell parity fix and the mechanical diff test. Last because
    it re-ports whatever steps 1–4 changed; doing it earlier means doing it twice.
-6. **A1** — the timeout number. Last on purpose, and it is the worst item.
+6. ~~**A1**~~ — **done 2026-09-16**: the number first, then the throughput fix
+   it was standing in for.
 
-**Exposure, as it stands on 2026-09-16.** The interim measure was taken: the
-window is now results larger than ~5 MB rather than ~1 MB, and it stays that way
-until `bin/secrets-redact` is faster. That is its own object and its own review.
+**Exposure, as it stands on 2026-09-16.** Closed. The interim measure landed
+first and the throughput fix followed the same day, so the window is now results
+larger than roughly 200 MB. `bin/secrets-redact` has its own review, and six of
+its items are open — but none of them is this one.
 
 A7's Windows gap is narrower than it was — the port's ownership logic and its
 redactor timeout are now checked by `tests/test_install.sh` — but the missing
@@ -942,9 +949,8 @@ rg -n '"timeout"' lib/patch_config.py install.ps1
 
 ---
 
-**A: 10 — 8 closed (A2, A3, A4, A5, A6, A8, A9, A10 half), 2 open: A1 (interim
-measure taken, the repair belongs to `bin/secrets-redact`) and A7 (partly).
-B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
+**A: 10 — 9 closed (A1, A2, A3, A4, A5, A6, A8, A9, A10 half), 1 open: A7
+(partly). B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
 
 File: `/home/env2hell/review-2026-09-15-patch_config.md`. Sandbox with every
 probe script and payload: `/tmp/tmp.snGXbDrywJ` (nothing in it is deleted).

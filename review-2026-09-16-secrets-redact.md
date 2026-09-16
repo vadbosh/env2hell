@@ -60,6 +60,12 @@ the `keep` half of the suite, not just the `mask` half.
 
 ## A1 — two separators, alternated per line, cost 33× the whole runtime
 
+**✔ Closed 2026-09-16** (`a6f7cb8`). One `scrub_labelled` call, both spellings
+in one alternation. `bash tests/test_redact.sh` → `passed 66, failed 0`,
+`--pwsh` → `passed 64, failed 0`, and 1.1 MB through `--filter` in **0.36 s**
+where it was 10.73 s. The PowerShell port never had the defect: it builds both
+regexes once with `[regex]::new` at load time.
+
 **Class: silent wrong result** — through the timeout, which is what actually
 reaches the user: a hook killed at its limit replaces nothing, and the result
 goes to the model unmasked.
@@ -400,9 +406,8 @@ cases against both" is what the file claims.
 
 # Fix order, and what stays open while you work
 
-1. **A1** — alone, first, and commit it alone. It is one line, it is measured,
-   and every later item is worth more once the hook finishes. Re-run
-   `tests/test_redact.sh` and `--pwsh`.
+1. ~~**A1**~~ — **done 2026-09-16**, alone and in its own commit, as the order
+   asked.
 2. **A6** — one line, independent of the pattern work.
 3. **A2** — the private key block. Independent of A3–A5: it is a state flag,
    not a pattern change.
@@ -435,7 +440,7 @@ shellcheck -S style bin/secrets-redact       # info-level only, exit 0
 
 | Item | The assertion |
 |---|---|
-| A1 | a multi-MB payload through `--filter` under `timeout 10` comes back non-empty |
+| A1 | ✔ **closed 2026-09-16** — 1.1 MB in 0.36 s; the standing assertion is a multi-MB payload through `--filter` under `timeout 10` coming back non-empty |
 | A2 | no base64 line of an OpenSSH or RSA block survives; prose saying "BEGIN PRIVATE KEY" does |
 | A3 | `Authorization: Bearer …` is masked, the scheme word is not |
 | A4 | a quoted password containing `!` and `#` is masked, in both quoting styles |
@@ -453,7 +458,7 @@ time bin/secrets-redact --filter < /tmp/<your-sandbox>/p1m.txt > /dev/null
 
 ---
 
-**A: 7, B: 2, C: 1, D: 3 open questions.**
+**A: 7 — 1 closed (A1), 6 open (A2–A7). B: 2, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact.md`. Sandbox with every
 probe and payload: `/tmp/tmp.snGXbDrywJ` (`r1.sh`, `r2.sh`, the `v-*.awk`
