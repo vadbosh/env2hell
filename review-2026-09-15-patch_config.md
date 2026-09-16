@@ -672,6 +672,15 @@ and that group found this defect on its first execution.
 *three runs leave the same wiring*, four *wired …* assertions, and *opencode
 gets the same 394 rules and the plugin*.
 
+**The same gap on the POSIX side, closed the same day** (`0f288a2`): nothing had
+ever run `install.sh` and `uninstall.sh` as a pair either — only the patcher,
+directly, with `--remove`. The round trip is now a group of six: the installer
+lands four hook commands, 394 rules, the plugin and three commands; the
+uninstaller takes all of it back out and leaves the user's own settings key and
+the backups; a second uninstall exits 0. Nothing was wrong there — the only
+surprise was in the test, which expected three hook commands where Claude Code
+gets four, the notice entry being its own.
+
 ---
 
 # B. Documentation disagrees with the code
@@ -991,11 +1000,11 @@ bash tests/test_redact.sh   | tail -1     # passed 66, failed 0 (62 at baseline,
 bash tests/test_redact.sh --pwsh | tail -1  # passed 64, failed 0 (60 at baseline)
 bash tests/test_safe_env.sh | tail -1     # passed  9, failed 0
 bash tests/test_scan.sh     | tail -1     # passed 16, failed 0
-bash tests/test_install.sh  | tail -1     # passed 46, failed 0 (14 at the
+bash tests/test_install.sh  | tail -1     # passed 52, failed 0 (14 at the
                                           #   baseline; +8 A5/A6/A8/A9/A10,
                                           #   +4 A2/A3, +4 A4, +1 the port,
                                           #   +5 A1/A7 matcher parity, +7 A11,
-                                          #   +3 C2/C3)
+                                          #   +3 C2/C3, +6 the round trip)
 bash tests/test_parity.sh   | tail -1     # passed 15, failed 0
 pwsh -NoProfile -File tests/test_ownership.ps1   # passed 8, failed 0
 python3 -m py_compile lib/patch_config.py # no output, exit 0
@@ -1016,6 +1025,7 @@ New groups that must appear in `tests/test_install.sh`, one per item:
 | A11 | ✔ **closed 2026-09-16** — *a run over an empty configuration finishes*, *three runs leave the same wiring*, and the four *wired …* assertions |
 | C2 | ✔ **closed 2026-09-16** — *three backups are kept and the oldest go* |
 | C3 | ✔ **closed 2026-09-16** — *a four-space configuration stays four-space*, and two-space stays two-space |
+| — | ✔ the round trip: *install.sh: the whole thing lands*, *uninstall.sh: everything of ours goes, the user's key stays*, *the backups are left in place*, *running it again is harmless* |
 | A8 | ✔ **closed 2026-09-16** — *a config holding a list is refused with a sentence* (exit 1, no `Traceback`) |
 | A9 | ✔ **closed 2026-09-16** — *config untouched*, *the leftover copy is not world-readable*, *the next run sweeps a stale temp file*. The original wording asked for no leftover at all; a SIGKILL cannot promise that, so the assertion is mode + sweep |
 | A10 | ◐ **half closed 2026-09-16** — *two patchers at once both finish cleanly* and *the config a race leaves behind is readable and wired once*. Both edits surviving is still open: see D5 |

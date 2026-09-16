@@ -27,9 +27,9 @@ NOT a defect".
 
 ## How to work through this file
 
-1. Two defects: **A2**, closed the same day because the private-key fix could
-   not be ported without it, and **A1**, a cost rather than a miss. Read C1
-   after them; it is the number that decides whether A1 ever matters.
+1. Both defects are closed. What is left is C1 — where the remaining 2.3 s per
+   megabyte goes — and three questions in D, of which D1 is answered by
+   `tests/test_parity.sh`.
 2. Everything else in this file is a statement that the port agrees with the
    POSIX version, each backed by a diff. That is the point of a parity pass:
    the expensive outcome is a port that drifts silently, and the evidence that
@@ -53,6 +53,28 @@ Same six as the POSIX review, plus the one this object exists to satisfy:
 # A. Defects
 
 ## A1 — the port is slower than the POSIX version on the same bytes
+
+**✔ Closed 2026-09-16** (`f0f6a1b`), as far as it closes. The two `.Replace`
+passes became one pattern, the same fold the POSIX version got — there it was
+about gawk recompiling a dynamic regex per line, here it is simply half the
+work. Three runs each, same payload, same machine:
+
+```
+    two passes   3.28s  2.64s  3.03s
+    one pattern  2.33s  2.42s  2.08s
+```
+
+`RegexOptions.Compiled` was measured and **declined**: ten runs each say it
+costs 0.107 s per invocation and saves 0.32 s on 1.1 MB, so it pays for itself
+above roughly 340 KB. This runs once per tool call and a tool result is usually
+kilobytes — the common case would pay the start-up and never see the saving.
+The number is in the file next to the decision, so the next person does not
+re-measure it to find out why the obvious option was not taken.
+
+The port is still about 4× the POSIX version (2.3 s against 0.5 s per MB), and
+that is where it stays: the remaining cost is a script-block callback per match,
+which is what a .NET `Replace` with a lambda costs. At a 60 s hook budget it
+covers roughly 26 MB.
 
 **Re-measured 2026-09-16, and the first number was wrong** — see A2. The
 port was not splitting its input, so 2.30 s/MB was one regex pass over one
@@ -243,9 +265,9 @@ parity pass.
 
 # Fix order, and what stays open while you work
 
-**A2** was taken the same day, because the private-key fix could not be
-ported until it was. **A1** can be taken whenever, or declined with a
-sentence saying 26 MB is enough. Nothing in this file blocks anything else.
+Both taken 2026-09-16: **A2** because the private-key fix could not be ported
+until it was, **A1** because folding the two passes was five lines. Nothing in
+this file is open.
 
 **What is open and is not in this file:** A6–A8 of the POSIX review. A6 does
 not apply — this port already counts values rather than lines, and is the
@@ -269,13 +291,13 @@ pwsh -NoProfile -Command '$e=$null; [System.Management.Automation.Language.Parse
 
 | Item | The assertion |
 |---|---|
-| A1 | only if taken: a multi-MB payload through `--filter` under `timeout 30` comes back non-empty |
+| A1 | ✔ **closed 2026-09-16** — one pattern instead of two passes; 2.3 s/MB against 3.0 s, and `Compiled` declined with its numbers |
 | A2 | ✔ **closed 2026-09-16** — `tests/test_redact.sh --pwsh` `passed 77, failed 0`, including the two private-key blocks, which cannot pass without per-line semantics |
 | D1 | ✔ **done 2026-09-16** — `bash tests/test_parity.sh` `passed 15, failed 0` |
 
 ---
 
-**A: 2 — 1 closed (A2), 1 open (A1). B: 0, C: 1, D: 3 open questions.**
+**A: 2 — both closed. B: 0, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact-ps1.md`. Reproductions:
 `/tmp/tmp.snGXbDrywJ/ps1.sh`.
