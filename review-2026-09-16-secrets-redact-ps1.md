@@ -27,8 +27,9 @@ NOT a defect".
 
 ## How to work through this file
 
-1. There is **one** defect here (A1) and it is the smallest kind: a cost, not a
-   miss. Read C1 next; it is the number that decides whether A1 ever matters.
+1. Two defects: **A2**, closed the same day because the private-key fix could
+   not be ported without it, and **A1**, a cost rather than a miss. Read C1
+   after them; it is the number that decides whether A1 ever matters.
 2. Everything else in this file is a statement that the port agrees with the
    POSIX version, each backed by a diff. That is the point of a parity pass:
    the expensive outcome is a port that drifts silently, and the evidence that
@@ -149,12 +150,13 @@ suite is explained where it happens (`tests/test_redact.sh` lines 354–355 and
 
 # C. Efficiency
 
-## C1 — where the 2.30 s goes, and why it is not A-shaped
+## C1 — where the 2.41 s goes, and why it is not A-shaped
 
-The whole cost is per line, in `Edit-Line`: two `.Replace` calls over 25 857
-lines, each invoking a PowerShell script block per match. The POSIX version's
-equivalent is 0.34 s after its own fix, and was 10.50 s before it — so the port
-was the *faster* of the two for as long as that defect stood.
+Two `.Replace` passes over the whole text, each invoking a PowerShell script
+block per match. The per-line alternative was measured and rejected at 143.66 s
+(A2). The POSIX version's equivalent is 0.39 s after its own fix, and was
+10.50 s before it — so the port was the *faster* of the two for as long as that
+defect stood.
 
 No other measurement in this pass produced a number worth an item. Startup is
 the one to watch on Windows rather than here: every reproduction above paid
