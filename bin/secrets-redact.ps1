@@ -92,10 +92,20 @@ $AnyVal = '(?:' + $Quoted + '|' + $Value + ')'
 # label and the value, and the scheme stays readable for the same reason the
 # label does.
 $Scheme = '(?:(?:bearer|basic|token)[^\S\n]+)?'
-$Labelled = @(
-    [regex]::new('(?<head>' + $Label + '"?[^\S\n]*[=:][^\S\n]*' + $Scheme + ')(?<val>' + $AnyVal + ')', 'IgnoreCase')  # password=X, TOKEN: X, {"password": X}
-    [regex]::new('(?<head>' + $Label + '"?[^\S\n]+'        + $Scheme + ')(?<val>' + $AnyVal + ')', 'IgnoreCase')   # --pass X, --token X
-)
+# Both spellings in one pattern rather than two Replace passes over the text:
+# `password=X`, `TOKEN: X`, `{"password": X}` and `--pass X`. The POSIX version
+# folds them for a different reason — there two dynamic regexes miss gawk's
+# compile cache — and here it simply halves the work.
+$Separator = '"?(?:[^\S\n]*[=:][^\S\n]*|[^\S\n]+)'
+#
+# Deliberately not RegexOptions.Compiled. Measured 2026-09-16, ten runs each:
+# compiling costs 0.107 s per invocation and saves 0.32 s on a 1.1 MB payload,
+# so it pays for itself only above roughly 340 KB. This runs once per tool call,
+# and a tool result is usually kilobytes — the common case would pay the
+# start-up and never see the saving.
+$Labelled  = [regex]::new(
+    '(?<head>' + $Label + $Separator + $Scheme + ')(?<val>' + $AnyVal + ')',
+    'IgnoreCase')
 
 # Tier 2 fires on a label followed by any long-enough run of token characters,
 # and that description also fits a name. Measured 2026-09-14 over 69 Codex
@@ -133,8 +143,7 @@ function Edit-Line([string]$Line) {
     })
     # The label itself stays readable: `--pass 6310…` must come back as
     # `--pass <REDACTED:32>`, or the model cannot tell what was removed.
-    foreach ($re in $Labelled) {
-        $out = $re.Replace($out, {
+    $out = $Labelled.Replace($out, {
             param($m)
             $v = $m.Groups['val'].Value
             # A quoted value keeps its quotes: they belong to the line, not to
@@ -148,8 +157,7 @@ function Edit-Line([string]$Line) {
             if (Test-Name $v) { return $m.Value }     # a name, not a value
             $script:Hits++
             $m.Groups['head'].Value + $q + (Get-Mask $v) + $q
-        })
-    }
+    })
     return $out
 }
 
