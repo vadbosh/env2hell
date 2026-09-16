@@ -735,18 +735,39 @@ The set is a cross product: `file_rules()` at line 138 is 12 readers × 32
 patterns + 10 dump rules. One more reader costs 32 rules; one more secret-file
 pattern costs 12.
 
-**When it starts to hurt:** Opencode matches `permission.bash` per shell call,
-and the file is re-read at startup. The per-call cost was not measured here —
-Opencode is not installed on this machine, and a claim about its matcher would
-be a guess. **Unverified.** The command that settles it: on a machine with
-Opencode, time a trivial `bash` tool call with and without the block present.
+**Decided 2026-09-16: the rules stay, and here is the number.** The claim in
+the first version of this item — "Opencode is not installed on this machine" —
+was simply wrong. It is: `opencode --version` → 1.18.31, and the live
+`~/.config/opencode/opencode.json` already carries all 394 rules. Measured with
+`XDG_CONFIG_HOME` pointed at two sandbox configurations, one with the block and
+one without, five runs each, twice:
 
-**Fix, if the measurement justifies it:** collapse the cross product into
-alternation patterns per reader rather than one key per pair, if Opencode's
-matcher supports it — that is a question for its config schema, not for this
-file.
+```
+  round1 with     5 runs: 15.20s      round2 with     5 runs: 14.29s
+  round1 without  5 runs: 13.69s      round2 without  5 runs: 13.21s
+```
+
+2.95 s against 2.69 s per start-up: **a quarter of a second, once per session**,
+for parsing 13 200 bytes more configuration. Not per shell call — this is
+start-up, which is where a config block is read.
+
+What is still unmeasured is the per-call matching cost inside Opencode, which
+needs a real tool call and therefore a model. Nothing in the numbers above
+suggests it matters, and the rules are the layer that denies `env` before a
+plugin is even loaded.
+
+**If it ever does matter:** collapse the cross product into alternation patterns
+per reader rather than one key per pair, if Opencode's schema allows it. Not
+today — a quarter of a second at start-up does not buy a change that could break
+the deny layer silently.
 
 ## C2 — backups accumulate forever; 21 copies of one config on this machine
+
+**✔ Closed 2026-09-16** (`8b7a87d`). The three newest are kept; the names carry
+`%Y%m%d-%H%M%S`, so sorting them as text sorts them by age. Test: *three backups
+are kept and the oldest go*. The alternative — moving them out to
+`~/.local/state/env2hell/` — was declined: a backup next to the file it came
+from is the one a person finds without being told where to look.
 
 ```
 $ ls ~/.claude/ | grep -c 'settings.json.bak'
@@ -763,6 +784,11 @@ also stops a `.bak` from being picked up by anything that scans the config
 directory.
 
 ## C3 — a patch reformats the whole file: 68 changed lines for a 3-key config
+
+**✔ Closed 2026-09-16** (`8b7a87d`). `detect_indent` reads the first indented
+line and hands that to `json.dump` — a count of spaces, or a tab. Tests: *a
+four-space configuration stays four-space* and *a two-space configuration stays
+two-space*.
 
 ```
 $ bash /tmp/tmp.snGXbDrywJ/probe2.sh
@@ -965,10 +991,11 @@ bash tests/test_redact.sh   | tail -1     # passed 66, failed 0 (62 at baseline,
 bash tests/test_redact.sh --pwsh | tail -1  # passed 64, failed 0 (60 at baseline)
 bash tests/test_safe_env.sh | tail -1     # passed  9, failed 0
 bash tests/test_scan.sh     | tail -1     # passed 16, failed 0
-bash tests/test_install.sh  | tail -1     # passed 43, failed 0 (14 at the
+bash tests/test_install.sh  | tail -1     # passed 46, failed 0 (14 at the
                                           #   baseline; +8 A5/A6/A8/A9/A10,
                                           #   +4 A2/A3, +4 A4, +1 the port,
-                                          #   +5 A1/A7 matcher parity, +7 A11)
+                                          #   +5 A1/A7 matcher parity, +7 A11,
+                                          #   +3 C2/C3)
 bash tests/test_parity.sh   | tail -1     # passed 15, failed 0
 pwsh -NoProfile -File tests/test_ownership.ps1   # passed 8, failed 0
 python3 -m py_compile lib/patch_config.py # no output, exit 0
@@ -987,6 +1014,8 @@ New groups that must appear in `tests/test_install.sh`, one per item:
 | A6 | ✔ **closed 2026-09-16** — *a 600 config is still 600 after a patch* |
 | A7 | ✔ **closed 2026-09-16** — all three matchers and the timeout diffed against `lib/patch_config.py`, and the notice entry is written |
 | A11 | ✔ **closed 2026-09-16** — *a run over an empty configuration finishes*, *three runs leave the same wiring*, and the four *wired …* assertions |
+| C2 | ✔ **closed 2026-09-16** — *three backups are kept and the oldest go* |
+| C3 | ✔ **closed 2026-09-16** — *a four-space configuration stays four-space*, and two-space stays two-space |
 | A8 | ✔ **closed 2026-09-16** — *a config holding a list is refused with a sentence* (exit 1, no `Traceback`) |
 | A9 | ✔ **closed 2026-09-16** — *config untouched*, *the leftover copy is not world-readable*, *the next run sweeps a stale temp file*. The original wording asked for no leftover at all; a SIGKILL cannot promise that, so the assertion is mode + sweep |
 | A10 | ◐ **half closed 2026-09-16** — *two patchers at once both finish cleanly* and *the config a race leaves behind is readable and wired once*. Both edits surviving is still open: see D5 |
@@ -1007,7 +1036,8 @@ rg -n '"timeout"' lib/patch_config.py install.ps1
 ---
 
 **A: 11 — all closed (A10 half: the crash is gone, last-writer-wins remains,
-see D5). B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
+see D5). B: 2 — both closed. C: 3 — all three decided, two of them by a
+change and one by a measurement. D: 5, one of them decided.**
 
 File: `/home/env2hell/review-2026-09-15-patch_config.md`. Sandbox with every
 probe script and payload: `/tmp/tmp.snGXbDrywJ` (nothing in it is deleted).
