@@ -517,17 +517,47 @@ else
     no "claude: the redactor is given at least 60 s" "smallest timeout written: $written"
 fi
 
-# The same number lives twice; nothing but this line keeps the copies equal.
-py_timeout="$(sed -n 's/^REDACT_TIMEOUT = \([0-9]*\).*/\1/p' "$PATCH")"
-# shellcheck disable=SC2016  # $RedactTimeout is PowerShell's variable, matched
-                            # as text — expanding it here would search for ""
-ps_timeout="$(sed -n 's/^\$RedactTimeout = \([0-9]*\).*/\1/p' "$SRC/install.ps1")"
-if [ -n "$py_timeout" ] && [ "$py_timeout" = "$ps_timeout" ]; then
-    ok "install.ps1 gives the redactor the same $py_timeout s as lib/patch_config.py"
-else
-    no "install.ps1 gives the redactor the same timeout as lib/patch_config.py" \
-       "python=$py_timeout powershell=$ps_timeout"
-fi
+# ── the two installers write the same policy, and nothing enforced it ───────
+# Every matcher and the timeout exist twice, in two languages. A comment saying
+# "keep these in step" is what failed: the Python side grew the Edit/Write/MCP
+# notice entry on 2026-09-14 and the port went without it until 2026-09-16, so
+# a Windows user editing a .env got no warning at all. This compares the
+# literals themselves, in the order below.
+py_values="$(python3 - "$PATCH" <<'PY'
+import runpy, sys
+mod = runpy.run_path(sys.argv[1])
+for value in (mod["REDACT_MATCHER"]["claude"], mod["NOTICE_MATCHER"],
+              mod["FAILURE_MATCHER"], mod["REDACT_TIMEOUT"]):
+    print(value)
+PY
+)"
+
+# shellcheck disable=SC2016  # the $-names below are PowerShell's, matched as
+                            # text in install.ps1 — expanding them here would
+                            # search for the empty string
+ps_value () {                   # ps_value <name> — the literal from install.ps1
+    sed -n "s/^\\\$$1 *= *'\\(.*\\)'.*/\\1/p;s/^\\\$$1 *= *\\([0-9][0-9]*\\).*/\\1/p" \
+        "$SRC/install.ps1" | head -1
+}
+
+i=0
+while IFS='|' read -r label ps_name; do
+    [ -n "$label" ] || continue
+    i=$((i + 1))
+    want="$(printf '%s\n' "$py_values" | sed -n "${i}p")"
+    got="$(ps_value "$ps_name")"
+    if [ -n "$want" ] && [ "$want" = "$got" ]; then
+        ok "install.ps1 and lib/patch_config.py agree on $label ($want)"
+    else
+        no "install.ps1 and lib/patch_config.py agree on $label" \
+           "python=[$want] powershell=[$got]"
+    fi
+done <<'PAIRS'
+the redactor matcher|RedactMatcher
+the notice matcher|NoticeMatcher
+the failure matcher|FailureMatcher
+the redactor timeout|RedactTimeout
+PAIRS
 
 # ── the same question, asked of the PowerShell port ─────────────────────────
 # install.ps1 carries its own copy of every decision here, and until now

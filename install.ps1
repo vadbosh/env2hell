@@ -118,6 +118,15 @@ $DumpRules = [ordered]@{
 # See lib/patch_config.py (REDACT_TIMEOUT) for why this is 60 and not 10.
 $RedactTimeout = 60
 
+# The same three matchers lib/patch_config.py writes, named here for the same
+# reason: three functions below have to agree with it and with each other, and
+# a comment saying "keep these in step" is what failed last time. The port went
+# without the notice entry from 2026-09-14 until 2026-09-16, so a Windows user
+# editing a .env got no warning at all.
+$RedactMatcher  = 'Bash|Read|Grep'
+$NoticeMatcher  = 'Edit|Write|mcp__.*'
+$FailureMatcher = 'Bash|Read|Grep|Edit|Write|mcp__.*'
+
 $Readers = @('cat','head','tail','less','more','strings','xxd','od','nl','tac','bat','batcat')
 $SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
                  '*id_rsa*','*id_ed25519*','*id_ecdsa*','*/.bashrc*','*/.zshrc*',
@@ -207,12 +216,21 @@ function Update-RedactConfig ($Name, $Path, $RedactPath) {
     # should_block, additional_contexts and feedback_message and nothing that
     # rewrites output — so there the hook warns instead, which is what turns a
     # silent leak into a rotation.
-    $matcher  = if ($Name -eq 'codex') { '^Bash$' } else { 'Bash|Read|Grep' }
+    $matcher  = if ($Name -eq 'codex') { '^Bash$' } else { $RedactMatcher }
     $argument = if ($Name -eq 'codex') { ' --warn-only' } else { '' }
 
+    # The notice entry below is also a secrets-redact command on PostToolUse and
+    # it is not this one: it warns rather than replaces, and carries its own
+    # matcher. Telling them apart by the flag keeps each idempotent — on Codex
+    # the redactor's own command *is* the warn-only one, so there the flag says
+    # nothing and every entry of ours is this one.
     $entries = @($data.hooks.PostToolUse)
     $already = @($entries | Where-Object {
-        $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-redact' }
+        $e = $_
+        $mine = @($e.hooks | Where-Object { Test-OurCommand $_.command 'secrets-redact' })
+        if ($mine.Count -eq 0) { return $false }
+        if ($Name -ne 'claude') { return $true }
+        @($mine | Where-Object { "$($_.command)" -notmatch '--warn-only\s*$' }).Count -gt 0
     })
     if ($already.Count -gt 0) {
         # An install made before the matcher widened is still wired for Bash
@@ -271,7 +289,7 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
     if ($already.Count -gt 0) { Say '    = failure hook already wired'; return }
 
     $entry = [pscustomobject]@{
-        matcher = 'Bash|Read|Grep'
+        matcher = $FailureMatcher
         hooks   = @([pscustomobject]@{
             type          = 'command'
             shell         = 'powershell'
@@ -283,6 +301,66 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
     $data.hooks.PostToolUseFailure = @($entries + $entry)
     Write-Json $Path $data
     Say $(if ($DryRun) { '    would add failure hook' } else { '    failure hook added' })
+}
+
+# Tools whose result carries a secret in a shape not worth rewriting.
+#
+# `Read` and `Grep` hand over one string and the hook replaces it. `Edit` does
+# not: its result carries the file in four places — originalFile, oldString,
+# newString and every line of structuredPatch[].lines — and `Write` adds
+# content beside originalFile. An MCP result is an array of content blocks
+# whose schema belongs to the server.
+#
+# Masking one of those fields and leaving the next would read as coverage while
+# the same secret sits one key along, and rebuilding all of them means guessing
+# at schemas this hook does not own. A mangled tool result is worse than an
+# unmasked one — it is wrong in a way nothing downstream can detect. So this
+# entry only warns. Editing a .env is ordinary work, and it is the case this
+# covers.
+function Update-NoticeConfig ($Name, $Path, $RedactPath) {
+    if ($Name -ne 'claude') { return }        # the other assistants warn anyway
+
+    $data = Read-Json $Path
+    if ($data.PSObject.Properties.Name -notcontains 'hooks') {
+        Set-Property $data 'hooks' ([pscustomobject]@{})
+    }
+    if ($data.hooks.PSObject.Properties.Name -notcontains 'PostToolUse') {
+        Set-Property $data.hooks 'PostToolUse' @()
+    }
+
+    $wanted  = "& `"$RedactPath`" --warn-only"
+    $entries = @($data.hooks.PostToolUse)
+    $already = @($entries | Where-Object {
+        @($_.hooks | Where-Object {
+            (Test-OurCommand $_.command 'secrets-redact') -and
+            "$($_.command)" -match '--warn-only\s*$'
+        }).Count -gt 0
+    })
+    if ($already.Count -gt 0) {
+        $fixed = 0
+        foreach ($e in $already) {
+            if ("$($e.matcher)" -ne $NoticeMatcher) { $e.matcher = $NoticeMatcher; $fixed++ }
+        }
+        if ($fixed -eq 0) { Say '    = notice hook already wired'; return }
+        Write-Json $Path $data
+        Say $(if ($DryRun) { "    would set notice matcher to $NoticeMatcher" }
+              else         { "    notice matcher set to $NoticeMatcher" })
+        return
+    }
+
+    $entry = [pscustomobject]@{
+        matcher = $NoticeMatcher
+        hooks   = @([pscustomobject]@{
+            type          = 'command'
+            shell         = 'powershell'
+            command       = $wanted
+            timeout       = $RedactTimeout
+            statusMessage = 'secrets-redact...'
+        })
+    }
+    $data.hooks.PostToolUse = @($entries + $entry)
+    Write-Json $Path $data
+    Say $(if ($DryRun) { '    would add notice hook' } else { '    notice hook added' })
 }
 
 function Update-OpencodeConfig ($Path, $WithRule) {
@@ -365,6 +443,7 @@ foreach ($name in $ides) {
         Update-HookConfig    $name $config $guard
         Update-RedactConfig  $name $config $redact
         Update-FailureConfig $name $config $redact
+        Update-NoticeConfig  $name $config $redact
     }
 
     if (-not $NoRule) {
