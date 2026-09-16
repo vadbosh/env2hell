@@ -315,6 +315,43 @@ than the sweep window.
 
 ---
 
+## A8 — `--filter` adds a trailing newline the input did not have
+
+**Class: damage, one byte.** The smallest A item here, and it is an A rather
+than a C because I6 is a promise about bytes: this mode redacts, it does not
+reformat.
+
+**Where:** `redact ()` at line 179 — awk's `print` terminates every line. The
+hook path repairs it with `untrail` (lines 329–334); `--filter` never calls
+that, and `--filter` is the mode the Opencode plugin uses.
+
+**Reproduction**, found by putting the same bytes through the PowerShell port
+(`review-2026-09-16-secrets-redact-ps1.md`), which gets it right:
+
+```
+$ printf 'x --pass 63108c3a9f4b4d2e8c7a1b5e9d0f2a6c' > nl-in
+input:  41 bytes, ends with newline: 0
+posix:  23 bytes, ends with newline: 1
+pwsh:   22 bytes, ends with newline: 0
+
+$ secrets-redact < nl.json        # the hook path, which has untrail
+hook stdout ends with newline: False len 22
+```
+
+So the same text masked through the hook is 22 bytes and through `--filter` is
+23.
+
+**Fix.** Give `--filter` the same treatment the hook path has: remember whether
+the input ended in a newline and strip the added one if it did not. The awk
+program can do it itself — track the last line and use `printf` for it — which
+is cheaper than another pass over the output.
+
+**Test.** `tests/test_redact.sh`: input with no trailing newline through
+`--filter`, asserting the output has none either; and the same for input that
+does. Run it for both ports — the port already passes.
+
+---
+
 # B. Documentation disagrees with the code
 
 ## B1 — the header documents `--filter`'s exit codes, not the hook's
@@ -416,6 +453,8 @@ cases against both" is what the file claims.
    first, then make them pass as one change, then re-run the whole suite and
    read the `keep` half specifically.
 5. **A7** — after A1, because A1 removes most of the kills that cause it.
+6. **A8** — independent of everything above; the PowerShell port already does
+   it right, so the behaviour to match is on disk.
 
 **Exposure while you work.** A2 through A5 are all "a credential in this shape
 reaches the model" and all stay open until step 3 and step 4 land. There is no
@@ -447,6 +486,7 @@ shellcheck -S style bin/secrets-redact       # info-level only, exit 0
 | A5 | `{"password": "…"}` is masked; `{"password_field": "user_password"}` is not |
 | A6 | three values on one line produce a warning that says three |
 | A7 | a killed run leaves nothing a later run does not sweep |
+| A8 | input with no trailing newline comes back with none, through `--filter` as well as through the hook |
 | — | the timing pair from A1, recorded in the commit message rather than asserted in a test |
 
 And the one number that says A1 landed:
@@ -458,7 +498,7 @@ time bin/secrets-redact --filter < /tmp/<your-sandbox>/p1m.txt > /dev/null
 
 ---
 
-**A: 7 — 1 closed (A1), 6 open (A2–A7). B: 2, C: 1, D: 3 open questions.**
+**A: 8 — 1 closed (A1), 7 open (A2–A8). B: 2, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact.md`. Sandbox with every
 probe and payload: `/tmp/tmp.snGXbDrywJ` (`r1.sh`, `r2.sh`, the `v-*.awk`
