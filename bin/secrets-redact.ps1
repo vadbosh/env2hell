@@ -60,7 +60,7 @@ $patternsRe = [regex]::new(($patterns -join '|'), 'None')
 # ── tier 2: what a secret is called, and what one looks like ────────────────
 $Label = '(--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
          'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|' +
-         'client[-_]?secret|private[-_]?key|credential|' +
+         'client[-_]?secret|private[-_]?key|credential|authorization|' +
          # Cloud keys with no distinctive prefix. AWS is covered by tier 1
          # (AKIA…), Huawei and OpenStack are not: their access key is 20
          # characters of uppercase and digits, the secret 40 of base62 — shapes
@@ -71,6 +71,13 @@ $Label = '(--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
 # 16 is the floor: an md5 is 32 and a git SHA is 40, so length alone can never
 # decide this — only the label can.
 $Value = '[A-Za-z0-9+/=_.~-]{16,}'
+# A password is the one string that carries punctuation — `S3cr3t!Pass#2026`
+# stops at the first `!` in the class above, six characters short of the floor,
+# and went through untouched. Inside quotes the writer has already said where
+# the value ends, so the quotes are the boundary. 8 is the floor there: a quoted
+# run is far less ambiguous than a bare one.
+$Quoted = '"[^"\n]{8,}"|''[^''\n]{8,}'''
+$AnyVal = '(?:' + $Quoted + '|' + $Value + ')'
 
 # The label is matched without regard to case. `TOKEN: 6310…` is how a token
 # appears in most output there is — an env dump, a config echo, a CI log — and
@@ -79,9 +86,15 @@ $Value = '[A-Za-z0-9+/=_.~-]{16,}'
 # Named groups, not numbered: $Label carries five parenthesised alternations of
 # its own, so the value would land at group 7 and move again the next time a
 # cloud vendor is added to the list.
+# `"?` in front of the separator: the JSON spelling puts a closing quote between
+# the label and the colon — {"password": "…"} — and neither pattern admitted it.
+# `(bearer|basic|token) ` after it: an HTTP header puts the scheme between the
+# label and the value, and the scheme stays readable for the same reason the
+# label does.
+$Scheme = '(?:(?:bearer|basic|token)[^\S\n]+)?'
 $Labelled = @(
-    [regex]::new('(?<head>' + $Label + '\s*[=:]\s*"?)(?<val>' + $Value + ')', 'IgnoreCase')  # password=X, TOKEN: X
-    [regex]::new('(?<head>' + $Label + '\s+"?)(?<val>'       + $Value + ')', 'IgnoreCase')   # --pass X, --token X
+    [regex]::new('(?<head>' + $Label + '"?[^\S\n]*[=:][^\S\n]*' + $Scheme + ')(?<val>' + $AnyVal + ')', 'IgnoreCase')  # password=X, TOKEN: X, {"password": X}
+    [regex]::new('(?<head>' + $Label + '"?[^\S\n]+'        + $Scheme + ')(?<val>' + $AnyVal + ')', 'IgnoreCase')   # --pass X, --token X
 )
 
 # Tier 2 fires on a label followed by any long-enough run of token characters,
@@ -124,22 +137,52 @@ function Edit-Line([string]$Line) {
         $out = $re.Replace($out, {
             param($m)
             $v = $m.Groups['val'].Value
+            # A quoted value keeps its quotes: they belong to the line, not to
+            # the secret, and `password="<REDACTED:20>"` still reads as a
+            # quoted field.
+            $q = ''
+            if ($v.Length -ge 2 -and ($v[0] -eq '"' -or $v[0] -eq "'") -and $v[-1] -eq $v[0]) {
+                $q = [string]$v[0]
+                $v = $v.Substring(1, $v.Length - 2)
+            }
             if (Test-Name $v) { return $m.Value }     # a name, not a value
             $script:Hits++
-            $m.Groups['head'].Value + (Get-Mask $v)
+            $m.Groups['head'].Value + $q + (Get-Mask $v) + $q
         })
     }
     return $out
 }
 
-# Splitting on "`n" with -1 keeps the trailing empty element, so joining puts
-# the text back byte for byte — including whether it ended in a newline, and
-# including a \r that a CRLF stream carries. This masks; it does not reformat.
+# .NET matches over the whole text in one pass, and that is the only reason
+# this port is usable: calling Edit-Line per line costs 143 s per megabyte
+# against 2.3 s for a single pass — measured 2026-09-16 on 25 857 lines, where
+# the per-line version spends everything on 25 857 function calls and two
+# script-block callbacks each.
+#
+# One pass over the whole text means the patterns have to be line-local by
+# construction, since `\s` and `[^"]` both match a newline. Hence `[^\S\n]`
+# for the separators above and `[^"\n]` inside the quoted value: a label on one
+# line must not reach a value on the next.
+#
+# A private key is the exception that genuinely spans lines, so it is taken
+# first, with a variable-length lookbehind (.NET has them) anchored to the
+# header line. Tier 1 matches the BEGIN text and nothing else, so before this
+# the result came back with `-----<REDACTED:25>-----` on top and the key itself
+# intact underneath — which reads as handled and is not. The body is replaced
+# line for line, so a diff of the result against the file still lines up.
+$KeyBody = [regex]::new(
+    '(?<=^-+BEGIN [A-Z0-9 ]*PRIVATE KEY-+\r?$\n)(?s:.*?)(?=^-+END [A-Z0-9 ]*PRIVATE KEY)',
+    'Multiline')
+
 function Edit-Text([string]$Text) {
     if ($Text -eq '') { return $Text }
-    $lines = $Text -split "`n", -1
-    for ($i = 0; $i -lt $lines.Count; $i++) { $lines[$i] = Edit-Line $lines[$i] }
-    return ($lines -join "`n")
+    $out = $KeyBody.Replace($Text, {
+        param($m)
+        ($m.Value.Split([char]10) | ForEach-Object {
+            if ($_ -eq '') { $_ } else { $script:Hits++; Get-Mask $_ }
+        }) -join "`n"
+    })
+    return (Edit-Line $out)
 }
 
 function Read-Stdin { $input_ = [Console]::In.ReadToEnd(); return $input_ }

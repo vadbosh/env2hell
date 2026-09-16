@@ -170,6 +170,82 @@ check_shape keep '~/.claude/settings.json.bak.20260915-224647'   'the same with 
 check_shape keep '-rw------- 1 root root 4096 Sep 15 22:46 settings.json.bak.20260915-224647' 'an ls -la line carrying one'
 check_shape keep 'settings.json.env2hell.tmp'                    'the installer temp name'
 
+# ── shapes a secret takes that the label rules used to miss ─────────────────
+# Each of these came back byte for byte before 2026-09-16, through both ports.
+
+# An HTTP header is where a token appears most often outside a shell, and the
+# scheme word sits between the label and the value. The scheme stays readable
+# for the same reason the label does: the model has to see what kind of
+# credential went.
+BEARER='abcdefghijklmnopqrstuvwxyz0123456789'
+check_shape mask "Authorization: Bearer $BEARER"                 'an HTTP bearer token'
+check_shape mask "authorization: bearer $BEARER"                 'the same, lower case'
+check_shape keep 'Authorization: Bearer'                         'a header with no value after it'
+
+got="$(hook_out "Authorization: Bearer $BEARER")"
+if grep -qF -- 'Authorization: Bearer <REDACTED:' <<< "$got"; then
+    ok "keeps the scheme word readable"
+else
+    no "keeps the scheme word readable" "expected 'Authorization: Bearer <REDACTED:…>', got: $got"
+fi
+
+# A password is exactly the string that carries punctuation, and VALUE's
+# character class stops at the first `!`. Inside quotes the writer has already
+# marked where the value ends, so that is the boundary to use.
+PUNCT='S3cr3t!Passw0rd#2026'
+check_shape mask "password = \"$PUNCT\""                         'a quoted password with punctuation'
+check_shape mask "PGPASSWORD='$PUNCT'"                           'the same in single quotes'
+check_shape keep 'password_field = "user_password"'              'a quoted name, not a value'
+check_shape keep 'password = "short"'                            'a quoted value too short to be a secret'
+
+# The JSON spelling: a closing quote sits between the label and the colon, and
+# neither separator admitted it. JSON is what an API error, a config dump and
+# `kubectl get -o json` print.
+check_shape mask '{"password": "hunter2-hunter2-hunter2"}'       'the JSON spelling of a labelled secret'
+check_shape keep '{"password_field": "user_password"}'           'the JSON spelling of a name'
+
+# A private key is a block, not a line, and awk sees lines. Tier 1 masks the
+# BEGIN text — which made the result *look* handled while the key itself went
+# through underneath it.
+check_block () {                        # <what it is> <line…>
+    local what="$1"; shift
+    local text out
+    text="$(printf '%s\n' "$@")"
+    out="$(printf '%s' "$text" | run_tool --filter 2>/dev/null)"
+    if grep -q 'b3BlbnNzaC1rZXktdjEA\|MIIEpAIBAAKCAQEA' <<< "$out"; then
+        no "masks $what" "the key body reached the output:
+$(printf '%s\n' "$out" | sed 's/^/        /')"
+    elif [ "$(printf '%s\n' "$out" | wc -l)" -ne "$(printf '%s\n' "$text" | wc -l)" ]; then
+        no "masks $what" "the line count changed: $(printf '%s\n' "$text" | wc -l) in, $(printf '%s\n' "$out" | wc -l) out"
+    else
+        ok "masks $what, line for line"
+    fi
+}
+
+check_block 'an OpenSSH private key' \
+    '-----BEGIN OPENSSH PRIVATE KEY-----' \
+    'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABlwAAAAdzc2gt' \
+    'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABlwAAAAdzc2gt' \
+    '-----END OPENSSH PRIVATE KEY-----'
+check_block 'an RSA private key' \
+    '-----BEGIN RSA PRIVATE KEY-----' \
+    'MIIEpAIBAAKCAQEAvtbqvKZ9pQ3Xp7nZ0oR2lM4cW8sT1yU6iE5aB3dF7gH9jK2mN4pQ' \
+    '-----END RSA PRIVATE KEY-----'
+
+# The words in prose must not start swallowing the rest of a document. Tier 1
+# masks the phrase itself wherever it appears, and that is deliberate — the RE
+# is shared character for character with bin/safe-env. What must not happen is
+# the *block* rule latching on: the lines after a sentence are ordinary text.
+prose="$(printf '%s\n' 'the file starts with BEGIN RSA PRIVATE KEY, like every key does' \
+                       'and this ordinary line comes after it' |
+         run_tool --filter 2>/dev/null)"
+if grep -qF 'and this ordinary line comes after it' <<< "$prose"; then
+    ok "the phrase in a sentence does not swallow what follows"
+else
+    no "the phrase in a sentence does not swallow what follows" "got:
+$(printf '%s\n' "$prose" | sed 's/^/        /')"
+fi
+
 check_shape mask "croc --pass $HEX code"                         'a labelled hex password'
 check_shape mask "TOKEN: $HEX"                                   'an uppercase label'
 check_shape mask 'HW_ACCESS_KEY=ABCD1234EFGH5678IJKL'            'a Huawei access key: caps and digits, no underscore'
