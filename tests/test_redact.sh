@@ -248,6 +248,62 @@ else
 $(printf '%s\n' "$prose" | sed 's/^/        /')"
 fi
 
+# ── what a killed run leaves behind ─────────────────────────────────────────
+# A SIGKILL runs no trap, and the harness kills this hook exactly when it is
+# slow, so a killed run used to leave its whole payload in /tmp for good — 74 MB
+# from one kill, with somebody's tool output inside it. POSIX only: the port
+# keeps everything in memory and writes nothing.
+#
+# TMPDIR points inside this suite's own directory, so nothing here can sweep or
+# leave anything in the real one.
+if [ "$PORT" = posix ]; then
+    scratch_home="$(mktemp -d)"
+    trap 'rm -rf "${scratch_home:?}"' EXIT
+    big="$scratch_home/big.json"
+    python3 - "$big" <<'PY'
+import json, sys
+json.dump({"tool_name": "Bash",
+           "tool_response": {"stdout": ("ordinary line of output " * 40 + "\n") * 12000}},
+          open(sys.argv[1], "w"))
+PY
+
+    TMPDIR="$scratch_home" run_tool < "$big" >/dev/null 2>&1 &
+    redact_pid=$!
+    sleep 1
+    kill -9 "$redact_pid" 2>/dev/null
+    wait "$redact_pid" 2>/dev/null
+
+    runs () {                           # runs — how many run directories exist
+        find "$scratch_home/secrets-redact" -maxdepth 1 -mindepth 1 \
+             -name 'run.*' -type d 2>/dev/null | wc -l
+    }
+    left="$(runs)"
+    mode="$(python3 -c 'import os,sys; print(format(os.stat(sys.argv[1]).st_mode & 0o777, "o"))' \
+            "$scratch_home/secrets-redact" 2>/dev/null || printf 'unknown')"
+
+    if [ "$mode" = 700 ]; then
+        ok "the scratch directory is private whatever the umask says"
+    else
+        no "the scratch directory is private" "mode is $mode"
+    fi
+
+    # Back-dated on purpose: the sweep must never take a directory young enough
+    # to belong to a run happening right now.
+    find "$scratch_home/secrets-redact" -maxdepth 1 -mindepth 1 -name 'run.*' -type d \
+         -exec touch -t 200001010000 {} + 2>/dev/null
+    printf 'x --pass %s\n' "$HEX" | TMPDIR="$scratch_home" run_tool --filter >/dev/null 2>&1
+    after="$(runs)"
+
+    if [ "$left" -ge 1 ] && [ "$after" -eq 0 ]; then
+        ok "a later run sweeps what a killed one left ($left left, then $after)"
+    elif [ "$left" -eq 0 ]; then
+        no "a later run sweeps what a killed one left" \
+           "the kill left nothing — the payload finished before it landed"
+    else
+        no "a later run sweeps what a killed one left" "$left left, $after still there"
+    fi
+fi
+
 # ── the count in the warning, and the bytes on the way out ──────────────────
 # --warn-only is read by a human who decides whether to rotate. Counting lines
 # instead of values reports fewer credentials than are in the output, and
