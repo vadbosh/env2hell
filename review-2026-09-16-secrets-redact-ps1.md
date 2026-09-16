@@ -51,7 +51,12 @@ Same six as the POSIX review, plus the one this object exists to satisfy:
 
 # A. Defects
 
-## A1 — the port is 6.8× slower than the POSIX version on the same bytes
+## A1 — the port is slower than the POSIX version on the same bytes
+
+**Re-measured 2026-09-16, and the first number was wrong** — see A2. The
+port was not splitting its input, so 2.30 s/MB was one regex pass over one
+string. After A2 it is 2.41 s/MB doing the work correctly, against the POSIX
+0.39 s. The ratio stands at about 6×, and so does everything below.
 
 **Class: a cost today; a silent wrong result only past ~26 MB.** A hook killed
 at its timeout replaces nothing, so slowness turns into an unmasked result at
@@ -87,6 +92,50 @@ one-liner, and neither is urgent at 26 MB.
 
 **Test.** Only if the fix lands: a multi-MB payload through `--filter` under
 `timeout 30`, non-empty. A test asserting seconds is flaky under load.
+
+---
+
+## A2 — the port never split its input into lines
+
+**Class: silent wrong result, and it hid A1's real number.** Found while
+porting the private-key fix, which could not work until this did.
+
+**Where:** `Edit-Text` — the `-split` call. Under this PowerShell it returns
+the **whole text as one element**:
+
+```
+$ printf 'one\ntwo\nthree\n' | pwsh -NoProfile -File sp2.ps1
+len=14 has10=True
+backtick-n=1  regex-\n=1  String.Split=4
+```
+
+**Mechanism.** Every rule in the port is written as if it sees one line. Given
+the whole blob instead, `\s` in a separator and `[^"]` in a quoted value both
+match a newline, so a label on one line could reach a value on the next — and
+the private-key block rule, which asks "is this line a header", never saw a
+line at all.
+
+The visible symptom was the opposite of alarming: the port looked *fast*. The
+2.30 s/MB in A1 was one regex pass over one giant string, not 25 857 lines.
+
+**Fix, and the second measurement that shaped it.** Splitting properly and
+calling `Edit-Line` per line is correct and unusable: **143.66 s per megabyte**,
+against 2.41 s for a single pass — 25 857 function calls with two script-block
+callbacks each. So the text is masked in one pass, the way .NET is built for,
+and the patterns are made line-local by construction instead: `[^\S\n]` for
+the separators, `[^"\n]` inside a quoted value, and a variable-length
+lookbehind anchored to the key header for the block. .NET is one of the few
+engines with variable-length lookbehind, which is what makes that a single
+pattern rather than a loop.
+
+**Verified:**
+
+```
+bash tests/test_redact.sh --pwsh                 passed 77, failed 0
+1.1 MB through --filter                          2.41s
+the same corpora through both ports, diffed      0 differing lines
+a private key block through both, diffed         identical
+```
 
 ---
 
@@ -187,14 +236,18 @@ parity pass.
 
 # Fix order, and what stays open while you work
 
-One item, no interactions: **A1** can be taken whenever, or declined with a
+**A2** was taken the same day, because the private-key fix could not be
+ported until it was. **A1** can be taken whenever, or declined with a
 sentence saying 26 MB is enough. Nothing in this file blocks anything else.
 
-**What is open and is not in this file:** A2–A5 of the POSIX review apply
-verbatim to this port, because the patterns are a faithful copy. Every one of
-those fixes has to be made twice, and the only thing that will notice a
-half-done pair is `tests/test_redact.sh --pwsh`. Write the case for both ports
-in the same commit as the fix.
+**What is open and is not in this file:** A6–A8 of the POSIX review. A6 does
+not apply — this port already counts values rather than lines, and is the
+reference for fixing it there. A8 does not apply either: `--filter` here does
+not add a byte. A7 has no equivalent, since nothing is written to disk.
+
+A2–A5 of that review did apply verbatim and were fixed in both ports in one
+commit (`d78a6c1`), which is the rule this file asked for: the case goes in
+for both ports alongside the fix.
 
 ---
 
@@ -210,11 +263,12 @@ pwsh -NoProfile -Command '$e=$null; [System.Management.Automation.Language.Parse
 | Item | The assertion |
 |---|---|
 | A1 | only if taken: a multi-MB payload through `--filter` under `timeout 30` comes back non-empty |
+| A2 | ✔ **closed 2026-09-16** — `tests/test_redact.sh --pwsh` `passed 77, failed 0`, including the two private-key blocks, which cannot pass without per-line semantics |
 | D1 | a parity case in the suite: one corpus, both ports, `diff` empty |
 
 ---
 
-**A: 1, B: 0, C: 1, D: 3 open questions.**
+**A: 2 — 1 closed (A2), 1 open (A1). B: 0, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact-ps1.md`. Reproductions:
 `/tmp/tmp.snGXbDrywJ/ps1.sh`.
