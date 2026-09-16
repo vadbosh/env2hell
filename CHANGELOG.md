@@ -1,5 +1,97 @@
 # Changelog
 
+## 0.5.3 — 2026-09-16
+
+Three cold reviews — `lib/patch_config.py`, `bin/secrets-redact` and its
+PowerShell port — and the fixes they asked for. The reviews are in the
+repository as `review-2026-09-1*.md`; what follows is what changed for someone
+who uses this.
+
+### Added
+
+- **A private key is masked as a block.** Tier 1 matched the `BEGIN … PRIVATE
+  KEY` line and nothing else, so a key read through `Read` came back with
+  `-----<REDACTED:25>-----` on top and the body intact underneath — which reads
+  as handled. The header starts the block, the footer ends it, and the body is
+  replaced line for line so a diff against the file still lines up.
+
+- **Three shapes a labelled secret takes and was missed in.** An HTTP header
+  (`Authorization: Bearer …`, with the scheme word left readable), a quoted
+  password carrying punctuation (`password = "S3cr3t!Pass#2026"` — inside
+  quotes the writer has already said where the value ends, so the floor there
+  is eight characters rather than sixteen), and the JSON spelling
+  (`{"password": "…"}`, where a closing quote sits between the label and the
+  colon).
+
+- **`patch_config.py --print`** writes the wiring to stdout for a configuration
+  this installer must not rewrite.
+
+- **Four test suites where there were three.** `tests/test_parity.sh` runs the
+  same bytes through both redactors and diffs the answers — it exists because
+  doing that by hand found three defects no single-port test could have caught.
+  `tests/test_release.sh` checks that everything `install.sh` ships is a name
+  `release.sh` knows. And `tests/test_install.sh` now runs both installers and
+  the uninstaller end to end rather than only driving the patcher.
+
+### Fixed
+
+- **The redactor was slow enough to be switched off by its own timeout.**
+  `scrub_labelled` was called twice per line with different separators, which
+  misses gawk's compiled-regex cache and recompiles the whole label alternation
+  for every line: 10.5 s per megabyte. A killed `PostToolUse` hook replaces
+  nothing, so every tool result over about a megabyte reached the model
+  unmasked and unannounced. Both separators are one pattern now — 0.4 s per
+  megabyte — and the installer gives the hook 60 s rather than 10.
+
+- **The warning under-reported credentials.** `--warn-only` counted matching
+  *lines*, so four values on two lines were announced as two, in the one
+  message a person reads to decide whether to rotate a key.
+
+- **`--filter` added a byte that was not in the input.** awk terminates every
+  line; the hook path had repaired that since it was written and this mode
+  never did — and this mode is what the Opencode plugin calls to replace a tool
+  result.
+
+- **A killed hook left the whole tool result in `/tmp`.** 74 MB from one kill,
+  measured. Everything goes under one directory now, `chmod 700`, swept of
+  anything older than an hour by the next run.
+
+- **The installer claimed hooks it did not own.** Ownership was a substring of
+  the command, so a user's own `wrap-secrets-guard` was silently repointed at
+  this installation and their `secrets-redact-audit` hook was deleted by
+  `--remove`. It is the program being run — argv[0] — that says whose entry it
+  is.
+
+- **An Opencode `opencode.jsonc` is read now**, comments and all. It is still
+  not rewritten while it carries them, because a dump would drop every one:
+  the run says so, names the file and offers `--print`. And `install.sh` stops
+  discarding the patcher's exit code, so an assistant left unwired is reported
+  and the run finishes non-zero.
+
+- **Four ways a patch damaged the file it was patching.** A symlinked
+  configuration was replaced by a regular file, detaching a dotfiles
+  repository; a 600 file came back 644; a crash between the write and the
+  rename left a world-readable copy of the whole configuration beside it; and
+  two installers at once shared one temporary filename, so one of them died on
+  the rename with its change lost.
+
+- **Backups no longer accumulate without limit** — the three newest are kept —
+  **and a patch keeps the file's own indentation**, which was 68 changed lines
+  on a configuration of three keys.
+
+- **The Windows installer.** It died on a configuration holding `{}` with
+  "The property 'Name' cannot be found on this object" — strict mode treats
+  member enumeration over an empty collection as an error — which is what a
+  fresh install meets. It was also missing the `Edit|Write|mcp__.*` warning
+  entry and had a narrower failure matcher than the POSIX side; the three
+  matchers and the timeout are now compared against `lib/patch_config.py` by a
+  test rather than by a comment.
+
+- **`release.sh` could not see the file this repository changes most.**
+  `secrets-redact` was shipped on 2026-09-14 and was still not in its list of
+  known names, so the mirror check answered "no file of that name is shipped"
+  and reported zero recognised mirrors as agreement.
+
 ## 0.5.2 — 2026-09-09
 
 ### Added
