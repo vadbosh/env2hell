@@ -279,6 +279,11 @@ A1 comes straight back.
 
 ## A6 — the warning counts lines, not values
 
+**Closed 2026-09-16** (`8c150ff`). `grep -o '<REDACTED:' | wc -l` counts the
+masks themselves. The PowerShell port already did this and was the reference.
+Tests: *the warning counts values, not lines (three on one line)* and *the
+warning counts values across lines*.
+
 **Class: visible failure** — the number is wrong in the one message a human
 acts on, and it is wrong downwards.
 
@@ -338,6 +343,12 @@ than the sweep window.
 ---
 
 ## A8 — `--filter` adds a trailing newline the input did not have
+
+**Closed 2026-09-16** (`8c150ff`). `--filter` buffers to a temp directory and
+reuses the hook path's `untrail`; with no `mktemp` it falls open to the old
+streaming behaviour. Cost of the buffering, measured: 0.39 s to 0.48 s per
+megabyte. Tests: *--filter adds no newline the input did not have* and
+*--filter keeps the newline the input did have*.
 
 **Class: damage, one byte.** The smallest A item here, and it is an A rather
 than a C because I6 is a promise about bytes: this mode redacts, it does not
@@ -467,30 +478,29 @@ cases against both" is what the file claims.
 
 1. ~~**A1**~~ — **done 2026-09-16**, alone and in its own commit, as the order
    asked.
-2. **A6** — one line, independent of the pattern work.
+2. ~~**A6**~~ — **done 2026-09-16.**
 3. ~~**A2**~~ — **done 2026-09-16.**
 4. ~~**A3, A4, A5 together**~~ — **done 2026-09-16**, exactly as the order said:
    thirteen failing cases first, then one change, then the whole suite with the
    `keep` half read line by line. It found nothing broken there, and the
    corpora diff between the two ports stayed at zero.
 5. **A7** — after A1, because A1 removes most of the kills that cause it.
-6. **A8** — independent of everything above; the PowerShell port already does
-   it right, so the behaviour to match is on disk.
+6. ~~**A8**~~ — **done 2026-09-16**, from the port's behaviour as the model.
 
-**Exposure, as it stands on 2026-09-16.** A2–A5 are closed in both ports on the
-same day they were written up. What remains open is A6 (the warning undercounts
-credentials), A7 (`/tmp` litter after a kill) and A8 (`--filter` adds a byte) —
-none of which is "a credential reaches the model unmasked".
+**Exposure, as it stands on 2026-09-16.** Seven of eight closed the same day
+they were written up. What remains is A7: a killed run leaves a copy of the tool
+result in `/tmp`, mode 0700, until somebody clears it. Nothing reaches the model
+unmasked.
 
 ---
 
 # Done when
 
 ```bash
-bash tests/test_redact.sh        | tail -1   # passed 79, failed 0 (66 at the
-                                             #   baseline, +13 from A2–A5);
-                                             #   >= 82 when A6–A8 land
-bash tests/test_redact.sh --pwsh | tail -1   # passed 77, failed 0 (the same
+bash tests/test_redact.sh        | tail -1   # passed 83, failed 0 (66 at the
+                                             #   baseline, +13 A2–A5, +4 A6/A8);
+                                             #   >= 84 when A7 lands
+bash tests/test_redact.sh --pwsh | tail -1   # passed 81, failed 0 (the same
                                              #   minus the two jq cases)
 bash tests/test_guard.sh         | tail -1   # passed 76, failed 0
 bash tests/test_safe_env.sh      | tail -1   # passed  9, failed 0  (I2)
@@ -505,9 +515,9 @@ shellcheck -S style bin/secrets-redact       # info-level only, exit 0
 | A3 | ✔ **closed 2026-09-16** — *an HTTP bearer token*, *keeps the scheme word readable* |
 | A4 | ✔ **closed 2026-09-16** — *a quoted password with punctuation*, *the same in single quotes* |
 | A5 | ✔ **closed 2026-09-16** — *the JSON spelling of a labelled secret*; the name form is kept |
-| A6 | three values on one line produce a warning that says three |
+| A6 | ✔ **closed 2026-09-16** — *the warning counts values, not lines*, and across lines |
 | A7 | a killed run leaves nothing a later run does not sweep |
-| A8 | input with no trailing newline comes back with none, through `--filter` as well as through the hook |
+| A8 | ✔ **closed 2026-09-16** — *--filter adds no newline the input did not have*, and keeps the one it did |
 | — | the timing pair from A1, recorded in the commit message rather than asserted in a test |
 
 And the one number that says A1 landed:
@@ -519,7 +529,7 @@ time bin/secrets-redact --filter < /tmp/<your-sandbox>/p1m.txt > /dev/null
 
 ---
 
-**A: 8 — 5 closed (A1–A5), 3 open (A6, A7, A8). B: 2, C: 1, D: 3 open questions.**
+**A: 8 — 7 closed (A1–A6, A8), 1 open (A7). B: 2, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact.md`. Sandbox with every
 probe and payload: `/tmp/tmp.snGXbDrywJ` (`r1.sh`, `r2.sh`, the `v-*.awk`
