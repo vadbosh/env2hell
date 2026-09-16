@@ -33,10 +33,19 @@ version() {
 # The file in this checkout that a mirror is a copy of, matched by name. The
 # shipped names are unique, which is what makes matching by basename honest
 # here rather than merely convenient.
+#
+# This list has to grow when install.sh starts shipping something new, and it
+# did not: secrets-redact arrived on 2026-09-14 and was still unknown here on
+# 2026-09-16, so the mirror check answered "no file of that name is shipped"
+# about the file this repository changes most, and counted zero mirrors while
+# saying they all agreed. What install.sh installs is the list to compare
+# against: `rg -n 'install_file' install.sh`.
 source_for() {
 	case "$(basename "$1")" in
 		secrets-guard) printf '%s\n' "$SRC/bin/secrets-guard" ;;
 		secrets-guard.ps1) printf '%s\n' "$SRC/bin/secrets-guard.ps1" ;;
+		secrets-redact) printf '%s\n' "$SRC/bin/secrets-redact" ;;
+		secrets-redact.ps1) printf '%s\n' "$SRC/bin/secrets-redact.ps1" ;;
 		safe-env) printf '%s\n' "$SRC/bin/safe-env" ;;
 		safe-env.ps1) printf '%s\n' "$SRC/bin/safe-env.ps1" ;;
 		secrets-hygiene.md) printf '%s\n' "$SRC/rules/secrets-hygiene.md" ;;
@@ -76,6 +85,12 @@ check_mirrors() {
 	if [ "$n" -eq 0 ] && [ "$unknown" -eq 0 ]; then
 		echo "  mirrors:           none configured — set ENV2HELL_MIRRORS to compare copies"
 		return 0
+	fi
+	if [ "$n" -eq 0 ]; then
+		# Every path given was ignored. Saying "0, all identical" here reads as
+		# a pass and is how an unknown name stayed unnoticed.
+		echo "  mirrors:           none recognised — $unknown path(s) ignored, nothing compared"
+		return 1
 	fi
 	echo "  mirrors:           $n, all identical to this checkout"
 }

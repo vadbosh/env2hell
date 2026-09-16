@@ -436,14 +436,26 @@ again. Worth one line either way.
 
 # C. Efficiency
 
-## C1 — tier 1 is one alternation of 17 patterns, run per line
+## C1 — where the remaining time goes, measured after everything else landed
 
-Measured: `tier1-only` is 0.12 s over 25 857 lines, against 0.03 s for
-`{ print }`. That is 0.09 s per MB for the whole tier — not a problem, and
-recorded here so the next reader does not go looking for one. After A1 the
-whole program is 0.29 s/MB, of which tier 1 is roughly a third.
+**✔ Answered 2026-09-16.** One megabyte of this repository's own sources
+(25 857 lines), each pass switched off in turn:
 
-No other measurement in this pass showed a cost worth an item.
+```
+  neither     0.03s      the awk start-up and the line loop alone
+  tier 1      0.14s      + 0.11 for the alternation of 17 provider patterns
+  tier 2      0.24s      + 0.21 for the labelled pass
+  both        0.40s      additive, no interaction left
+  plain awk   0.02s      gawk '{print}', for scale
+  buffering   0.03s      what A8's temp file costs --filter
+```
+
+End to end, `--filter` on that payload is 0.42–0.48 s. Nothing pathological
+remains: the two passes cost what two regex passes over a megabyte cost, and
+they add up rather than multiplying — which is what A1 was about.
+
+At the 60 s the installer gives the hook, this covers roughly 130 MB of tool
+output. No item.
 
 ---
 
