@@ -632,6 +632,85 @@ else
     printf '  skip  install.ps1 ownership — pwsh not installed\n'
 fi
 
+# ── the round trip: install.sh, then uninstall.sh ───────────────────────────
+# Both scripts were only ever driven a piece at a time — the patcher directly,
+# with --remove. Nothing had run the pair as a user runs it, which is the only
+# way to find what one leaves for the other.
+sh_home="$tmp/shhome"
+mkdir -p "$sh_home/.claude" "$sh_home/.codex" "$sh_home/.config/opencode"
+for f in "$sh_home/.claude/settings.json" "$sh_home/.codex/hooks.json" \
+         "$sh_home/.config/opencode/opencode.json"; do
+    printf '{"model": "kept-by-the-user"}\n' > "$f"
+done
+
+if HOME="$sh_home" ENV2HELL_BIN_DIR="$sh_home/bin" \
+       bash "$SRC/install.sh" >"$tmp/sh-install.out" 2>&1; then
+    ok "install.sh: a run over a fresh home finishes"
+else
+    no "install.sh: a run over a fresh home finishes" \
+       "$(tail -5 "$tmp/sh-install.out" | sed 's/^/        /')"
+fi
+
+sh_state () {                   # sh_state — hooks, rules, plugin, commands
+    python3 - "$sh_home" <<'PY'
+import json, pathlib, sys
+h = pathlib.Path(sys.argv[1])
+claude = json.load(open(h / ".claude/settings.json"))
+hooks = [c for blocks in claude.get("hooks", {}).values()
+         for b in blocks for hk in b.get("hooks", [])
+         for c in [str(hk.get("command", ""))] if "secrets-" in c]
+oc = json.load(open(h / ".config/opencode/opencode.json"))
+bins = sorted(p.name for p in (h / "bin").iterdir()) if (h / "bin").is_dir() else []
+print(f"hooks={len(hooks)} rules={len(oc.get('permission', {}).get('bash', {}))} "
+      f"plugins={len(oc.get('plugin', []))} bins={len(bins)} "
+      f"model={claude.get('model')}")
+PY
+}
+
+installed="$(sh_state)"
+# Four hook commands on Claude Code: the guard before the command, the redactor
+# on results it can rewrite, the notice on the ones it cannot, and the failure
+# warning.
+if [ "$installed" = "hooks=4 rules=394 plugins=1 bins=3 model=kept-by-the-user" ]; then
+    ok "install.sh: the whole thing lands ($installed)"
+else
+    no "install.sh: the whole thing lands" "got [$installed]"
+fi
+
+if HOME="$sh_home" ENV2HELL_BIN_DIR="$sh_home/bin" \
+       bash "$SRC/uninstall.sh" >"$tmp/sh-uninstall.out" 2>&1; then
+    ok "uninstall.sh: a run over an installed home finishes"
+else
+    no "uninstall.sh: a run over an installed home finishes" \
+       "$(tail -5 "$tmp/sh-uninstall.out" | sed 's/^/        /')"
+fi
+
+removed="$(sh_state)"
+if [ "$removed" = "hooks=0 rules=0 plugins=0 bins=0 model=kept-by-the-user" ]; then
+    ok "uninstall.sh: everything of ours goes, the user's key stays"
+else
+    no "uninstall.sh: everything of ours goes, the user's key stays" "got [$removed]"
+fi
+
+# The backups are the only copy of what the configuration held before, so the
+# uninstaller says out loud that it leaves them — and it has to be true.
+baks="$(find "$sh_home/.claude" -maxdepth 1 -name 'settings.json.bak.*' | wc -l)"
+if [ "$baks" -ge 1 ]; then
+    ok "uninstall.sh: the backups are left in place ($baks)"
+else
+    no "uninstall.sh: the backups are left in place" "none left"
+fi
+
+# A second uninstall is something people do when they are not sure the first
+# worked.
+if HOME="$sh_home" ENV2HELL_BIN_DIR="$sh_home/bin" \
+       bash "$SRC/uninstall.sh" >"$tmp/sh-uninstall2.out" 2>&1; then
+    ok "uninstall.sh: running it again is harmless"
+else
+    no "uninstall.sh: running it again is harmless" \
+       "$(tail -5 "$tmp/sh-uninstall2.out" | sed 's/^/        /')"
+fi
+
 # ── install.ps1, run rather than read ───────────────────────────────────────
 # Until 2026-09-16 nothing had ever executed this file: the parity checks above
 # read its literals, and tests/test_ownership.ps1 lifts one function out of it.
