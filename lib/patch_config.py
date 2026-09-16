@@ -27,7 +27,8 @@ the plugin runs the real policy. The permission rules are still worth having
 because they deny the common spellings before a plugin is even loaded.
 
 Idempotent: an entry that is already present is left alone. A file that is
-about to change is copied to <file>.bak.<timestamp> first.
+about to change is copied to <file>.bak.<timestamp> first, keeps its own mode,
+and — when it is a symlink — is edited through the link rather than replaced.
 
 Usage:
     patch_config.py <ide> --guard PATH [--plugin PATH] [--remove] [--dry-run]
@@ -38,13 +39,20 @@ Exit codes: 0 done (or nothing to do), 1 error, 3 config file absent.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 
 HOME = os.path.expanduser("~")
+
+# How old a leftover temp file has to be before a later run removes it. Long
+# enough that a patcher running concurrently is never touched, short enough
+# that the litter of a crash does not outlive the next install.
+STALE_TEMP_SECONDS = 60
 
 def _opencode_config() -> str:
     """Whichever config file Opencode reads here, in the order it reads them.
@@ -147,13 +155,50 @@ def load(path: str):
 def save(path: str, data, dry_run: bool) -> None:
     if dry_run:
         return
+    # A configuration under version control is usually a symlink into a dotfiles
+    # repository. Renaming over the link replaces it with a regular file: the
+    # repository keeps the old text, the live file holds the wiring, and every
+    # later pull silently stops reaching the assistant. Follow the link and edit
+    # what it points at.
+    path = os.path.realpath(path)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     shutil.copy2(path, f"{path}.bak.{stamp}")
-    tmp = f"{path}.env2hell.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp, path)
+
+    # A process killed with SIGKILL runs no `finally`, so the sweep is what
+    # actually clears the litter of an earlier crash: same directory, same
+    # suffix, and only for this configuration file.
+    #
+    # Only files that have been sitting there a while. A second patcher running
+    # right now has a temp file of its own, seconds old, and deleting it is the
+    # very race the unique name was introduced to end — measured, on the first
+    # version of this sweep: the other run died on the rename with
+    # FileNotFoundError.
+    for stale in glob.glob(f"{path}.*.env2hell.tmp"):
+        if time.time() - os.path.getmtime(stale) > STALE_TEMP_SECONDS:
+            os.unlink(stale)
+
+    # Unique by construction, and in the target's own directory so the rename
+    # stays atomic. A fixed name is shared by two installers running at once,
+    # and whoever renames first leaves the other with nothing to rename.
+    mode = os.stat(path).st_mode & 0o7777
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".",
+                               prefix=os.path.basename(path) + ".",
+                               suffix=".env2hell.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            # The temp file holds the whole configuration, including the `env`
+            # block where an API key lives. mkstemp opens it 0600; this keeps
+            # the original's mode instead of the umask's, which is also what
+            # stops a 600 config from coming back 644 after the rename.
+            os.fchmod(fh.fileno(), mode)
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp, path)
+    finally:
+        # A crash or a signal between the write and the rename used to leave the
+        # whole configuration lying next to it, and nothing ever removed it.
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def hook_entry(ide: str, guard: str) -> dict:
@@ -481,6 +526,13 @@ def main() -> int:
         data = load(path)
     except json.JSONDecodeError as exc:
         print(f"    {path} is not valid JSON ({exc}) — left untouched", file=sys.stderr)
+        return 1
+
+    # Valid JSON that is not an object: every patcher below starts with
+    # `data.setdefault`, so a list or a bare string reached the user as an
+    # AttributeError traceback instead of a sentence.
+    if not isinstance(data, dict):
+        print(f"    {path} is not a JSON object — left untouched", file=sys.stderr)
         return 1
 
     if args.ide == "opencode":

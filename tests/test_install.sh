@@ -152,5 +152,185 @@ else
     no "claude: re-adding after --remove lands in the same place" "the wiring differs"
 fi
 
+# ── the file on disk, not the wiring inside it ──────────────────────────────
+# Every case below is a way to patch a configuration correctly and damage it
+# anyway: the hook entries land, and something else about the file is wrong —
+# its mode, its identity as a symlink, or a second copy left beside it.
+
+mode_of () {                    # mode_of <path> — portable stat -c '%a'
+    python3 - "$1" <<'PY'
+import os, sys
+print(format(os.stat(sys.argv[1]).st_mode & 0o777, "o"))
+PY
+}
+
+# A driver that dies exactly where a SIGKILL hurts: after the temp file is
+# written, before it is renamed over the configuration.
+cat > "$tmp/kill_at_replace.py" <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["PATCH_LIB"])
+import patch_config
+patch_config.os.replace = lambda *a, **k: os._exit(9)
+sys.argv = ["patch_config.py"] + sys.argv[1:]
+sys.exit(patch_config.main())
+PY
+
+# The same, stalled instead of killed: it holds its temp file open while a
+# second patcher runs the whole cycle underneath it.
+cat > "$tmp/slow_replace.py" <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["PATCH_LIB"])
+import patch_config
+_real = os.replace
+def _slow(src, dst):
+    time.sleep(2)
+    return _real(src, dst)
+patch_config.os.replace = _slow
+sys.argv = ["patch_config.py"] + sys.argv[1:]
+sys.exit(patch_config.main())
+PY
+
+leftover_tmp () {               # leftover_tmp <dir> — yes/no, no subprocess
+    set -- "$1"/*.env2hell.tmp
+    [ -e "$1" ] && printf 'yes' || printf 'no'
+}
+
+# ── valid JSON that is not an object ────────────────────────────────────────
+fresh
+printf '[]\n' > "$tmp/home/.claude/settings.json"
+out="$(HOME="$tmp/home" python3 "$PATCH" claude --guard "$GUARD" --redact "$REDACT" 2>&1)"
+rc=$?
+case "$out" in
+    *Traceback*) traceback=yes ;;
+    *)           traceback=no  ;;
+esac
+if [ "$rc" -eq 1 ] && [ "$traceback" = no ]; then
+    ok "claude: a config holding a list is refused with a sentence"
+else
+    no "claude: a config holding a list is refused with a sentence" \
+       "exit $rc, traceback=$traceback:
+$(printf '%s\n' "$out" | sed 's/^/        /')"
+fi
+
+# ── the mode of the file survives the patch ─────────────────────────────────
+# ~/.claude/settings.json carries an `env` block, which is where an API key
+# goes. A patch that publishes it to the rest of the machine is a leak caused
+# by the tool that exists to prevent one.
+fresh
+chmod 600 "$tmp/home/.claude/settings.json"
+run claude
+got="$(mode_of "$tmp/home/.claude/settings.json")"
+if [ "$got" = 600 ]; then
+    ok "claude: a 600 config is still 600 after a patch"
+else
+    no "claude: a 600 config is still 600 after a patch" "mode is now $got"
+fi
+
+# ── a config that is a symlink into a dotfiles repository ───────────────────
+fresh
+mkdir -p "$tmp/home/dotfiles"
+printf '{"model": "opus"}\n' > "$tmp/home/dotfiles/settings.json"
+ln -sf "$tmp/home/dotfiles/settings.json" "$tmp/home/.claude/settings.json"
+run claude
+target_wired="$(python3 - "$tmp/home/dotfiles/settings.json" <<'PY'
+import json, sys
+print("yes" if json.load(open(sys.argv[1])).get("hooks") else "no")
+PY
+)"
+if [ -L "$tmp/home/.claude/settings.json" ] && [ "$target_wired" = yes ]; then
+    ok "claude: a symlinked config stays a link and the target is wired"
+else
+    no "claude: a symlinked config stays a link and the target is wired" \
+       "link=$([ -L "$tmp/home/.claude/settings.json" ] && echo yes || echo no), target wired=$target_wired"
+fi
+
+# ── killed between the write and the rename ─────────────────────────────────
+# The atomic write means the configuration itself survives; what used to
+# survive with it was a world-readable copy of the whole file. A SIGKILL runs
+# no cleanup handler, so the copy is kept private instead, and the next run
+# sweeps it.
+fresh
+chmod 600 "$tmp/home/.claude/settings.json"
+before="$(cat "$tmp/home/.claude/settings.json")"
+PATCH_LIB="$(dirname "$PATCH")" HOME="$tmp/home" \
+    python3 "$tmp/kill_at_replace.py" claude --guard "$GUARD" --redact "$REDACT" \
+    >/dev/null 2>&1
+after="$(cat "$tmp/home/.claude/settings.json")"
+
+if [ "$before" = "$after" ]; then
+    ok "claude: a run killed mid-write leaves the config untouched"
+else
+    no "claude: a run killed mid-write leaves the config untouched" "the file changed"
+fi
+
+worst=600
+for leftover in "$tmp"/home/.claude/*.env2hell.tmp; do
+    [ -e "$leftover" ] || continue
+    worst="$(mode_of "$leftover")"
+done
+if [ "$worst" = 600 ]; then
+    ok "claude: the copy a killed run leaves behind is not world-readable"
+else
+    no "claude: the copy a killed run leaves behind is not world-readable" \
+       "mode is $worst"
+fi
+
+# Back-dated on purpose: the sweep leaves a temp file that is seconds old,
+# because that one belongs to a patcher running right now. What it clears is
+# the litter of a crash that happened earlier.
+touch -d '2 hours ago' "$tmp"/home/.claude/*.env2hell.tmp 2>/dev/null \
+    || touch -t 200001010000 "$tmp"/home/.claude/*.env2hell.tmp
+run claude
+if [ "$(leftover_tmp "$tmp/home/.claude")" = no ]; then
+    ok "claude: the next run sweeps a stale temp file the killed one left"
+else
+    no "claude: the next run sweeps a stale temp file the killed one left" \
+       "still there: $(echo "$tmp"/home/.claude/*.env2hell.tmp)"
+fi
+
+# ── two patchers on one configuration ───────────────────────────────────────
+# They used to share one temp filename, so whichever renamed first left the
+# other with nothing to rename and a traceback to show for it.
+fresh
+PATCH_LIB="$(dirname "$PATCH")" HOME="$tmp/home" \
+    python3 "$tmp/slow_replace.py" claude --guard "$GUARD" --redact "$REDACT" \
+    >"$tmp/slow.out" 2>&1 &
+slow_pid=$!
+sleep 1
+HOME="$tmp/home" python3 "$PATCH" claude \
+    --guard /other/place/secrets-guard --redact /other/place/secrets-redact \
+    >"$tmp/fast.out" 2>&1
+fast_rc=$?
+wait "$slow_pid"
+slow_rc=$?
+
+if [ "$slow_rc" -eq 0 ] && [ "$fast_rc" -eq 0 ]; then
+    ok "claude: two patchers at once both finish cleanly"
+else
+    no "claude: two patchers at once both finish cleanly" \
+       "slow exited $slow_rc, fast exited $fast_rc:
+$(cat "$tmp/slow.out" "$tmp/fast.out" | sed 's/^/        /')"
+fi
+
+# Last writer wins — the file carries one installation's paths, not a mixture,
+# and it is still valid JSON with the wiring in place.
+still_wired="$(python3 - "$tmp/home/.claude/settings.json" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception as exc:
+    print(f"unreadable: {exc}"); raise SystemExit
+pre = d.get("hooks", {}).get("PreToolUse", [])
+cmds = {h.get("command") for e in pre for h in e.get("hooks", [])}
+print("one" if len(cmds) == 1 else f"{len(cmds)}: {sorted(cmds)}")
+PY
+)"
+if [ "$still_wired" = one ]; then
+    ok "claude: the config a race leaves behind is readable and wired once"
+else
+    no "claude: the config a race leaves behind is readable and wired once" \
+       "$still_wired"
+fi
+
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
