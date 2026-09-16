@@ -626,6 +626,54 @@ instead of a traceback.
 
 ---
 
+## A11 — `install.ps1` died on an empty configuration, and nothing had ever run it
+
+**✔ Closed 2026-09-16** (`f1968c5`), and written up because the gap it exposes
+outlives the fix.
+
+**Class: visible failure** — it stops and says something, but what it says names
+no file and no cause, and the run has already printed three green lines above it.
+
+**Where:** every `$o.PSObject.Properties.Name -contains …` in `install.ps1`,
+fourteen of them. Under `Set-StrictMode -Version Latest` member enumeration over
+an *empty* collection is an error rather than an empty result, and a
+`settings.json` holding `{}` is exactly that object.
+
+**Reproduction** — the first end-to-end run this file has ever had:
+
+```
+$ USERPROFILE=$H LOCALAPPDATA=$H/AppData pwsh -NoProfile -File install.ps1 -BinDir $H/bin
+-- commands --
+    + …/bin\secrets-guard.ps1
+    + …/bin\secrets-redact.ps1
+    + …/bin\safe-env.ps1
+-- claude --
+install.ps1: The property 'Name' cannot be found on this object. Verify that the property exists.
+```
+
+```
+$ pwsh -NoProfile -File strict.ps1        # $data = '{}' | ConvertFrom-Json
+props count: 0
+THREW: The property 'Name' cannot be found on this object.
+non-empty notcontains: True              # the same line, on an object with a key
+```
+
+**Fix.** `Test-Property`, which iterates the collection rather than enumerating
+a member of it, in all fourteen places.
+
+**What this says about the test gap**, which is the point of the item: A7 above
+closed the *content* divergence between the two installers and left the port
+still unexecuted. Reading a file for its literals is not running it. The suite
+now runs it end to end with `USERPROFILE` and `LOCALAPPDATA` inside its own
+temporary directory — three runs, the four entries, the 394 opencode rules —
+and that group found this defect on its first execution.
+
+**Test.** `tests/test_install.sh`: *a run over an empty configuration finishes*,
+*three runs leave the same wiring*, four *wired …* assertions, and *opencode
+gets the same 394 rules and the plugin*.
+
+---
+
 # B. Documentation disagrees with the code
 
 ## B1 — the docstring promises `.jsonc` support the loader does not have
@@ -917,10 +965,11 @@ bash tests/test_redact.sh   | tail -1     # passed 66, failed 0 (62 at baseline,
 bash tests/test_redact.sh --pwsh | tail -1  # passed 64, failed 0 (60 at baseline)
 bash tests/test_safe_env.sh | tail -1     # passed  9, failed 0
 bash tests/test_scan.sh     | tail -1     # passed 16, failed 0
-bash tests/test_install.sh  | tail -1     # passed 36, failed 0 (14 at the
+bash tests/test_install.sh  | tail -1     # passed 43, failed 0 (14 at the
                                           #   baseline; +8 A5/A6/A8/A9/A10,
                                           #   +4 A2/A3, +4 A4, +1 the port,
-                                          #   +5 A1/A7 matcher parity)
+                                          #   +5 A1/A7 matcher parity, +7 A11)
+bash tests/test_parity.sh   | tail -1     # passed 15, failed 0
 pwsh -NoProfile -File tests/test_ownership.ps1   # passed 8, failed 0
 python3 -m py_compile lib/patch_config.py # no output, exit 0
 shellcheck -S style install.sh uninstall.sh release.sh bin/* tools/* tests/*.sh
@@ -937,6 +986,7 @@ New groups that must appear in `tests/test_install.sh`, one per item:
 | A5 | ✔ **closed 2026-09-16** — *a symlinked config stays a link and the target is wired* |
 | A6 | ✔ **closed 2026-09-16** — *a 600 config is still 600 after a patch* |
 | A7 | ✔ **closed 2026-09-16** — all three matchers and the timeout diffed against `lib/patch_config.py`, and the notice entry is written |
+| A11 | ✔ **closed 2026-09-16** — *a run over an empty configuration finishes*, *three runs leave the same wiring*, and the four *wired …* assertions |
 | A8 | ✔ **closed 2026-09-16** — *a config holding a list is refused with a sentence* (exit 1, no `Traceback`) |
 | A9 | ✔ **closed 2026-09-16** — *config untouched*, *the leftover copy is not world-readable*, *the next run sweeps a stale temp file*. The original wording asked for no leftover at all; a SIGKILL cannot promise that, so the assertion is mode + sweep |
 | A10 | ◐ **half closed 2026-09-16** — *two patchers at once both finish cleanly* and *the config a race leaves behind is readable and wired once*. Both edits surviving is still open: see D5 |
@@ -956,7 +1006,7 @@ rg -n '"timeout"' lib/patch_config.py install.ps1
 
 ---
 
-**A: 10 — all closed (A10 half: the crash is gone, last-writer-wins remains,
+**A: 11 — all closed (A10 half: the crash is gone, last-writer-wins remains,
 see D5). B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
 
 File: `/home/env2hell/review-2026-09-15-patch_config.md`. Sandbox with every
