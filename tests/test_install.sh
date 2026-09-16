@@ -152,6 +152,80 @@ else
     no "claude: re-adding after --remove lands in the same place" "the wiring differs"
 fi
 
+# ── somebody else's hooks, which happen to mention these names ──────────────
+# Ownership used to be a substring of the command, so a wrapper or an audit
+# script named after this tool was treated as one of its own entries: silently
+# repointed on install, deleted on --remove. The program being run is what says
+# whose entry it is.
+
+seed_third_party () {           # seed_third_party — a config with foreign hooks
+    fresh
+    cat > "$tmp/home/.claude/settings.json" <<'JSON'
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "/home/me/bin/wrap-secrets-guard --audit"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Write",
+       "hooks": [{"type": "command", "command": "/home/me/bin/secrets-redact-audit"}]}
+    ]
+  }
+}
+JSON
+}
+
+foreign_commands () {           # foreign_commands — theirs, still in the file
+    python3 - "$tmp/home/.claude/settings.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+out = [h.get("command", "")
+       for blocks in d.get("hooks", {}).values()
+       for b in blocks for h in b.get("hooks", [])
+       if "/home/me/bin/" in h.get("command", "")]
+print("\n".join(sorted(out)))
+PY
+}
+
+seed_third_party
+run claude
+kept="$(foreign_commands)"
+want="/home/me/bin/secrets-redact-audit
+/home/me/bin/wrap-secrets-guard --audit"
+if [ "$kept" = "$want" ]; then
+    ok "claude: install leaves a third-party hook and its arguments alone"
+else
+    no "claude: install leaves a third-party hook and its arguments alone" \
+       "what survived:
+$(printf '%s\n' "$kept" | sed 's/^/        /')"
+fi
+
+# Ours landed beside theirs rather than instead of it.
+if [ -n "$(shape claude)" ]; then
+    ok "claude: our own entries are added next to the third-party ones"
+else
+    no "claude: our own entries are added next to the third-party ones" "nothing was wired"
+fi
+
+run claude --remove
+kept="$(foreign_commands)"
+if [ "$kept" = "$want" ]; then
+    ok "claude: --remove takes ours out and leaves theirs"
+else
+    no "claude: --remove takes ours out and leaves theirs" \
+       "what survived:
+$(printf '%s\n' "$kept" | sed 's/^/        /')"
+fi
+# `shape` lists every entry mentioning "secrets-", which now includes theirs —
+# so the assertion is about what is left once theirs is set aside.
+ours_left="$(shape claude | grep -v '/home/me/bin/' || true)"
+if [ -z "$ours_left" ]; then
+    ok "claude: --remove still takes every entry of ours out"
+else
+    no "claude: --remove still takes every entry of ours out" "left: $ours_left"
+fi
+
 # ── the file on disk, not the wiring inside it ──────────────────────────────
 # Every case below is a way to patch a configuration correctly and damage it
 # anyway: the hook entries land, and something else about the file is wrong —
@@ -330,6 +404,57 @@ if [ "$still_wired" = one ]; then
 else
     no "claude: the config a race leaves behind is readable and wired once" \
        "$still_wired"
+fi
+
+# ── the number that decides whether the redactor finishes ───────────────────
+# A killed PostToolUse hook replaces nothing, so the tool result reaches the
+# model as it was. At the masking pass's measured ~90 KB/s, 10 s covered under
+# a megabyte: every larger result went through unmasked and unannounced. The
+# assertion is a floor, not the value — raising it is fine, lowering it is the
+# defect coming back.
+fresh
+run claude
+written="$(python3 - "$(cfg claude)" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+out = [h.get("timeout")
+       for event in ("PostToolUse", "PostToolUseFailure")
+       for b in d.get("hooks", {}).get(event, [])
+       for h in b.get("hooks", [])
+       if "secrets-redact" in str(h.get("command", ""))]
+print(min(out) if out else "none")
+PY
+)"
+if [ "$written" != none ] && [ "$written" -ge 60 ]; then
+    ok "claude: the redactor is given at least 60 s (got $written)"
+else
+    no "claude: the redactor is given at least 60 s" "smallest timeout written: $written"
+fi
+
+# The same number lives twice; nothing but this line keeps the copies equal.
+py_timeout="$(sed -n 's/^REDACT_TIMEOUT = \([0-9]*\).*/\1/p' "$PATCH")"
+# shellcheck disable=SC2016  # $RedactTimeout is PowerShell's variable, matched
+                            # as text — expanding it here would search for ""
+ps_timeout="$(sed -n 's/^\$RedactTimeout = \([0-9]*\).*/\1/p' "$SRC/install.ps1")"
+if [ -n "$py_timeout" ] && [ "$py_timeout" = "$ps_timeout" ]; then
+    ok "install.ps1 gives the redactor the same $py_timeout s as lib/patch_config.py"
+else
+    no "install.ps1 gives the redactor the same timeout as lib/patch_config.py" \
+       "python=$py_timeout powershell=$ps_timeout"
+fi
+
+# ── the same question, asked of the PowerShell port ─────────────────────────
+# install.ps1 carries its own copy of every decision here, and until now
+# nothing in tests/ ran a line of it. This covers the one that damaged a
+# user's configuration; the rest of the port is still untested.
+if command -v pwsh >/dev/null 2>&1; then
+    if out="$(pwsh -NoProfile -File "$SRC/tests/test_ownership.ps1" 2>&1)"; then
+        ok "install.ps1: ownership is the program, not a substring ($(printf '%s' "$out" | tail -1))"
+    else
+        no "install.ps1: ownership is the program, not a substring" "$out"
+    fi
+else
+    printf '  skip  install.ps1 ownership — pwsh not installed\n'
 fi
 
 printf '\npassed %d, failed %d\n' "$pass" "$fail"

@@ -42,6 +42,7 @@ import argparse
 import glob
 import json
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -53,6 +54,14 @@ HOME = os.path.expanduser("~")
 # enough that a patcher running concurrently is never touched, short enough
 # that the litter of a crash does not outlive the next install.
 STALE_TEMP_SECONDS = 60
+
+# What the redactor's hook entries are given. It is not a guess: the masking
+# pass runs at roughly 90 KB/s here, Claude Code kills a hook at its timeout,
+# and a killed PostToolUse hook replaces nothing — so the number is the size of
+# tool result that still gets masked. 10 s covered under 1 MB and dropped
+# everything above it silently; 60 s covers about 5 MB. The real repair is the
+# redactor's throughput, and this number is what holds until that lands.
+REDACT_TIMEOUT = 60
 
 def _opencode_config() -> str:
     """Whichever config file Opencode reads here, in the order it reads them.
@@ -97,6 +106,22 @@ REDACT_MATCHER = {"claude": "Bash|Read|Grep", "codex": "^Bash$"}
 # into a rotation.
 REDACT_IDES = {"claude"}
 WARN_IDES = {"codex"}
+
+
+def is_ours(command, tool: str) -> bool:
+    """Does this hook entry run our program, rather than merely mention it?
+
+    Ownership used to be a substring test, and a substring is not a name. A
+    user's own `/home/me/bin/wrap-secrets-guard --audit` was read as ours and
+    silently repointed at this installation; their `secrets-redact-audit` hook
+    was deleted by `--remove`. What says whose entry it is is the program being
+    run — argv[0], as a bare name.
+    """
+    try:
+        parts = shlex.split(str(command))
+    except ValueError:                 # an unbalanced quote is not our entry
+        return False
+    return bool(parts) and os.path.basename(parts[0]) == tool
 
 
 def redact_command(ide: str, redact: str) -> str:
@@ -221,7 +246,7 @@ def patch_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
 
     present = [
         e for e in pre
-        if any("secrets-guard" in str(h.get("command", ""))
+        if any(is_ours(h.get("command", ""), "secrets-guard")
                for h in e.get("hooks", []))
     ]
 
@@ -235,7 +260,7 @@ def patch_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
         # Already wired — make sure it points at this installation.
         for entry in present:
             for h in entry.get("hooks", []):
-                if "secrets-guard" in str(h.get("command", "")) and h["command"] != guard:
+                if is_ours(h.get("command", ""), "secrets-guard") and h["command"] != guard:
                     h["command"] = guard
                     changed.append(f"hook repointed to {guard}")
         return changed
@@ -262,7 +287,7 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
     # matcher. Telling them apart by the flag keeps each idempotent.
     def _is_replace(entry):
         cmds = [str(h.get("command", "")) for h in entry.get("hooks", [])
-                if "secrets-redact" in str(h.get("command", ""))]
+                if is_ours(h.get("command", ""), "secrets-redact")]
         if not cmds:
             return False
         # Only Claude Code has a second, warn-only entry to tell this one from.
@@ -278,7 +303,7 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
 
     if remove:
         for entry in list(post):
-            if any("secrets-redact" in str(h.get("command", ""))
+            if any(is_ours(h.get("command", ""), "secrets-redact")
                    for h in entry.get("hooks", [])):
                 post.remove(entry)
                 changed.append("post-hook removed")
@@ -296,7 +321,7 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
                 entry["matcher"] = REDACT_MATCHER[ide]
                 changed.append(f"post-hook matcher set to {REDACT_MATCHER[ide]}")
             for h in entry.get("hooks", []):
-                if "secrets-redact" in str(h.get("command", "")) and h["command"] != redact:
+                if is_ours(h.get("command", ""), "secrets-redact") and h["command"] != redact:
                     h["command"] = redact
                     changed.append(f"post-hook repointed to {redact}")
         return changed
@@ -306,7 +331,7 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
         "hooks": [{
             "type": "command",
             "command": redact,
-            "timeout": 10,
+            "timeout": REDACT_TIMEOUT,
             "statusMessage": "secrets-redact...",
         }],
     })
@@ -354,7 +379,7 @@ def patch_notice_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[
     present = [
         e for e in post
         if any(str(h.get("command", "")).endswith("--warn-only")
-               and "secrets-redact" in str(h.get("command", ""))
+               and is_ours(h.get("command", ""), "secrets-redact")
                for h in e.get("hooks", []))
     ]
 
@@ -372,7 +397,7 @@ def patch_notice_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[
                 entry["matcher"] = NOTICE_MATCHER
                 changed.append(f"notice-hook matcher set to {NOTICE_MATCHER}")
             for h in entry.get("hooks", []):
-                if "secrets-redact" in str(h.get("command", "")) and h["command"] != wanted:
+                if is_ours(h.get("command", ""), "secrets-redact") and h["command"] != wanted:
                     h["command"] = wanted
                     changed.append("notice-hook repointed")
         return changed
@@ -382,7 +407,7 @@ def patch_notice_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[
         "hooks": [{
             "type": "command",
             "command": wanted,
-            "timeout": 10,
+            "timeout": REDACT_TIMEOUT,
             "statusMessage": "secrets-redact...",
         }],
     })
@@ -418,7 +443,7 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
 
     present = [
         e for e in fail
-        if any("secrets-redact" in str(h.get("command", ""))
+        if any(is_ours(h.get("command", ""), "secrets-redact")
                for h in e.get("hooks", []))
     ]
 
@@ -438,7 +463,7 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
                 entry["matcher"] = FAILURE_MATCHER
                 changed.append(f"failure-hook matcher set to {FAILURE_MATCHER}")
             for h in entry.get("hooks", []):
-                if "secrets-redact" in str(h.get("command", "")) and h["command"] != wanted:
+                if is_ours(h.get("command", ""), "secrets-redact") and h["command"] != wanted:
                     h["command"] = wanted
                     changed.append("failure-hook repointed")
         return changed
@@ -448,7 +473,7 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
         "hooks": [{
             "type": "command",
             "command": wanted,
-            "timeout": 10,
+            "timeout": REDACT_TIMEOUT,
             "statusMessage": "secrets-redact...",
         }],
     })

@@ -73,6 +73,14 @@ obvious fix of making the hook block when it cannot finish.
 
 ## A1 — `timeout: 10` drops the redactor on every result over ~1 MB, and it fails open
 
+**◐ Interim measure applied 2026-09-16; the item stays open.** The three
+entries now carry `REDACT_TIMEOUT = 60` (`$RedactTimeout` in `install.ps1`),
+which moves the cliff from ~1 MB to ~5 MB at the measured ~90 KB/s. Nothing
+about the throughput changed, so a result larger than that still reaches the
+model unmasked and unannounced — the repair belongs to `bin/secrets-redact`.
+Tests: *the redactor is given at least 60 s* (a floor, not the value) and
+*install.ps1 gives the redactor the same 60 s as lib/patch_config.py*.
+
 **Class: silent wrong result.**
 
 **Where:** `lib/patch_config.py` lines 264, 340, 406 — the `"timeout": 10` field
@@ -150,6 +158,16 @@ redactor. A test that only asserts `timeout == 10` locks the defect in.
 
 ## A2 — `--remove` deletes hook entries the user wrote themselves
 
+**✔ Closed 2026-09-16.** Ownership is `is_ours(command, tool)`: `shlex.split`
+the command, take `argv[0]`, compare its basename with the program name. A
+substring is not a name. Ported to `install.ps1` as `Test-OurCommand`, which
+splits on both path separators by hand — `[System.IO.Path]` uses the separator
+of the machine it runs on, so under the Linux pwsh the tests use it read a
+whole Windows path as one filename and matched nothing.
+Tests: *install leaves a third-party hook and its arguments alone*,
+*--remove takes ours out and leaves theirs*, *--remove still takes every entry
+of ours out*, and `tests/test_ownership.ps1` (8 cases) for the port.
+
 **Class: damage.**
 
 **Where:** `patch_post_hooks` lines 234–239 and `patch_failure_hooks` lines
@@ -189,6 +207,11 @@ is still there byte for byte.
 ---
 
 ## A3 — install silently repoints a command the user wrote
+
+**✔ Closed 2026-09-16** by the same `is_ours` / `Test-OurCommand` change as A2 —
+the repoint branch asks the same question as the remove branch. Test:
+*our own entries are added next to the third-party ones*, with the wrapper and
+its arguments unchanged.
 
 **Class: damage, silent.**
 
@@ -796,13 +819,12 @@ reproductions run through.
    pass over `save` as the order predicted; A10 came back half open (see its
    item) and produced D5. The five checks are in `tests/test_install.sh`:
    `passed 22, failed 0`, up from 14.
-3. **A2 + A3 together** (the ownership marker, D4). Before the first line
-   changes, pin the incident recorded at lines 224–227 — Codex growing a
-   duplicate PostToolUse entry per run, 2026-09-14 — as a test case in
-   `tests/test_install.sh`. That incident is what the current flag logic exists
-   to prevent; a marker-based rewrite that passes the suite and re-opens it is
-   the most expensive outcome available here. Re-run the A2 and A3
-   reproductions and the whole install suite after this step.
+3. ~~**A2 + A3 together**~~ — **done 2026-09-16.** The 2026-09-14 Codex
+   incident was already pinned by *no duplicate hook entries after three runs*,
+   which is what that group was written for; it stayed green throughout. The
+   fix turned out not to need the marker key of D4 — reading `argv[0]` answers
+   the same question without touching the entry's schema, so nothing an
+   assistant might validate was invented.
 4. **A4** — the `.jsonc` decision plus the `install.sh` exit-code change. It
    needs the Opencode test group, which does not exist yet; write the group
    first (it is also what A7 and C1 need).
@@ -810,16 +832,14 @@ reproductions run through.
    it re-ports whatever steps 1–4 changed; doing it earlier means doing it twice.
 6. **A1** — the timeout number. Last on purpose, and it is the worst item.
 
-**Exposure while you work.** A1 stays open for the whole sequence: until step 6,
-every tool result over ~1 MB reaches the model unmasked and unannounced. The
-interim measure costs one line and can go in today, ahead of everything else:
-raise the three `timeout` values to 60. It does not fix the throughput, it does
-not need the tests, and it moves the cliff from ~1 MB to ~5 MB. If that is
-declined, the risk is accepted knowingly until item 6 lands — say so rather than
-leaving it implied.
+**Exposure, as it stands on 2026-09-16.** The interim measure was taken: the
+window is now results larger than ~5 MB rather than ~1 MB, and it stays that way
+until `bin/secrets-redact` is faster. That is its own object and its own review.
 
-A7's Windows gap also stays open for the whole sequence. Nobody on this machine
-is affected; a Windows user is, for as long as the port lags.
+A7's Windows gap is narrower than it was — the port's ownership logic and its
+redactor timeout are now checked by `tests/test_install.sh` — but the missing
+`Edit|Write|mcp__.*` entry and the narrow failure matcher are still there, and
+still invisible to any test.
 
 ---
 
@@ -836,9 +856,11 @@ bash tests/test_redact.sh   | tail -1     # passed 66, failed 0 (62 at baseline,
 bash tests/test_redact.sh --pwsh | tail -1  # passed 64, failed 0 (60 at baseline)
 bash tests/test_safe_env.sh | tail -1     # passed  9, failed 0
 bash tests/test_scan.sh     | tail -1     # passed 16, failed 0
-bash tests/test_install.sh  | tail -1     # passed 22, failed 0 today (14 at
-                                          #   baseline, +8 from A5/A6/A8/A9/A10);
-                                          #   >= 26 when A2/A3/A4/A7 land
+bash tests/test_install.sh  | tail -1     # passed 29, failed 0 today (14 at
+                                          #   baseline; +8 A5/A6/A8/A9/A10,
+                                          #   +4 A2/A3, +2 A1, +1 the port);
+                                          #   >= 31 when A4 and A7 land
+pwsh -NoProfile -File tests/test_ownership.ps1   # passed 8, failed 0
 python3 -m py_compile lib/patch_config.py # no output, exit 0
 shellcheck -S style install.sh uninstall.sh release.sh bin/* tools/* tests/*.sh
                                           # info-level only, as today
@@ -848,12 +870,12 @@ New groups that must appear in `tests/test_install.sh`, one per item:
 
 | Item | The assertion |
 |---|---|
-| A2 | a third-party hook whose command contains `secrets-redact` survives `--remove` |
-| A3 | a third-party `PreToolUse` command containing `secrets-guard` is not repointed |
+| A2 | ✔ **closed 2026-09-16** — *--remove takes ours out and leaves theirs*, plus `tests/test_ownership.ps1` for the port |
+| A3 | ✔ **closed 2026-09-16** — *install leaves a third-party hook and its arguments alone* |
 | A4 | `opencode.jsonc` with a comment: the run does not report success, and `install.sh` surfaces it |
 | A5 | ✔ **closed 2026-09-16** — *a symlinked config stays a link and the target is wired* |
 | A6 | ✔ **closed 2026-09-16** — *a 600 config is still 600 after a patch* |
-| A7 | the matchers and timeouts in `install.ps1` equal the constants in `lib/patch_config.py` |
+| A7 | ◐ the timeout is diffed against `lib/patch_config.py` and the ownership logic is exercised; the matchers are still unchecked, and the `Edit\|Write\|mcp__.*` entry is still missing |
 | A8 | ✔ **closed 2026-09-16** — *a config holding a list is refused with a sentence* (exit 1, no `Traceback`) |
 | A9 | ✔ **closed 2026-09-16** — *config untouched*, *the leftover copy is not world-readable*, *the next run sweeps a stale temp file*. The original wording asked for no leftover at all; a SIGKILL cannot promise that, so the assertion is mode + sweep |
 | A10 | ◐ **half closed 2026-09-16** — *two patchers at once both finish cleanly* and *the config a race leaves behind is readable and wired once*. Both edits surviving is still open: see D5 |
@@ -873,8 +895,8 @@ rg -n '"timeout"' lib/patch_config.py install.ps1
 
 ---
 
-**A: 10 — 5 closed (A5, A6, A8, A9, A10 half), 5 open (A1, A2, A3, A4, A7).
-B: 2, C: 3, D: 5 open questions.**
+**A: 10 — 7 closed (A2, A3, A5, A6, A8, A9, A10 half), 3 open (A1 with an
+interim measure, A4, A7 partly). B: 2, C: 3, D: 5 open questions.**
 
 File: `/home/env2hell/review-2026-09-15-patch_config.md`. Sandbox with every
 probe script and payload: `/tmp/tmp.snGXbDrywJ` (nothing in it is deleted).

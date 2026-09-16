@@ -110,6 +110,9 @@ $DumpRules = [ordered]@{
     'typeset' = 'deny'; 'history' = 'deny'
     'safe-env' = 'allow'; 'safe-env *' = 'allow'
 }
+# See lib/patch_config.py (REDACT_TIMEOUT) for why this is 60 and not 10.
+$RedactTimeout = 60
+
 $Readers = @('cat','head','tail','less','more','strings','xxd','od','nl','tac','bat','batcat')
 $SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
                  '*id_rsa*','*id_ed25519*','*id_ecdsa*','*/.bashrc*','*/.zshrc*',
@@ -119,6 +122,25 @@ $SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
                  '*.azure/*','*.kube/config*','*.docker/config.json*',
                  '*Microsoft.PowerShell_profile.ps1*',
                  '/proc/*/environ*','*credentials*','*secrets*')
+
+# Ownership is the program a hook entry runs, never a substring of the line.
+# A user's own wrapper — `& "C:\me\bin\wrap-secrets-guard" -Audit` — matched
+# 'secrets-guard' and was repointed at this installation without a word; an
+# audit hook named after the redactor was removed by -Remove. The entries this
+# installer writes are of the form `& "<path>"`, so argv[0] is what to read.
+function Test-OurCommand ($Command, $Tool) {
+    $text = "$Command".Trim()
+    if ($text -match '^&\s*"([^"]+)"' -or $text -match "^&\s*'([^']+)'") {
+        $program = $Matches[1]
+    } else {
+        $program = ($text -split '\s+', 2)[0].Trim('"', "'")
+    }
+    # Split on both separators by hand. [System.IO.Path] uses the separator of
+    # the machine it runs on, so on the Linux pwsh the tests use it reads a
+    # whole Windows path as one filename and nothing ever matches.
+    $leaf = ($program -split '[\\/]')[-1]
+    return ($leaf -replace '\.[^.]*$', '') -eq $Tool
+}
 
 function Set-Property ($Object, $Name, $Value) {
     if ($Object.PSObject.Properties.Name -contains $Name) { $Object.$Name = $Value }
@@ -137,7 +159,7 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
     $matcher = if ($Name -eq 'codex') { '^Bash$' } else { 'Bash' }
     $entries = @($data.hooks.PreToolUse)
     $already = $entries | Where-Object {
-        $_.hooks | Where-Object { "$($_.command)" -match 'secrets-guard' }
+        $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-guard' }
     }
     if ($already) { Say '    = already wired'; return }
 
@@ -185,7 +207,7 @@ function Update-RedactConfig ($Name, $Path, $RedactPath) {
 
     $entries = @($data.hooks.PostToolUse)
     $already = @($entries | Where-Object {
-        $_.hooks | Where-Object { "$($_.command)" -match 'secrets-redact' }
+        $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-redact' }
     })
     if ($already.Count -gt 0) {
         # An install made before the matcher widened is still wired for Bash
@@ -208,7 +230,7 @@ function Update-RedactConfig ($Name, $Path, $RedactPath) {
             type          = 'command'
             shell         = 'powershell'
             command       = "& `"$RedactPath`"$argument"
-            timeout       = 10
+            timeout       = $RedactTimeout
             statusMessage = 'secrets-redact...'
         })
     }
@@ -239,7 +261,7 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
 
     $entries = @($data.hooks.PostToolUseFailure)
     $already = @($entries | Where-Object {
-        $_.hooks | Where-Object { "$($_.command)" -match 'secrets-redact' }
+        $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-redact' }
     })
     if ($already.Count -gt 0) { Say '    = failure hook already wired'; return }
 
@@ -249,7 +271,7 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
             type          = 'command'
             shell         = 'powershell'
             command       = "& `"$RedactPath`" --warn-only"
-            timeout       = 10
+            timeout       = $RedactTimeout
             statusMessage = 'secrets-redact...'
         })
     }
