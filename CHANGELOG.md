@@ -87,6 +87,13 @@ who uses this.
   matchers and the timeout are now compared against `lib/patch_config.py` by a
   test rather than by a comment.
 
+- **An installation kept its old timeouts for ever.** Re-running the installer
+  repointed the command and widened the matcher of an entry it found, and never
+  touched its `timeout` — so the machine this was found on still had every
+  redactor entry at 10 s hours after the installer had started writing 60, which
+  is exactly the window that number was raised to close. Both installers now
+  bring an existing entry up to the current numbers, and say so.
+
 - **`release.sh` could not see the file this repository changes most.**
   `secrets-redact` was shipped on 2026-09-14 and was still not in its list of
   known names, so the mirror check answered "no file of that name is shipped"

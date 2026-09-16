@@ -73,6 +73,11 @@ STALE_TEMP_SECONDS = 60
 # redactor's throughput, and this number is what holds until that lands.
 REDACT_TIMEOUT = 60
 
+# The guard reads a command line, which is short whatever the command does:
+# 200 000 characters come back in 0.73 s. Five seconds is generous and has
+# never been the binding constraint.
+GUARD_TIMEOUT = 5
+
 # How many timestamped backups of one configuration file to keep. Every changing
 # run writes one and nothing ever removed them: 21 copies of settings.json were
 # found in one live ~/.claude, each carrying whatever the `env` block holds.
@@ -322,13 +327,31 @@ def save(path: str, data, dry_run: bool) -> None:
             os.unlink(tmp)
 
 
+def refresh_timeout(entry: dict, tool: str, timeout: int) -> list[str]:
+    """Bring an entry that is already wired up to the current timeout.
+
+    Re-running the installer repointed the command and widened the matcher of
+    an entry it found, and never touched its timeout — so a machine wired
+    before the number changed kept the old one for ever. Measured 2026-09-16 on
+    this one: every redactor entry still said 10 while the installer had been
+    writing 60 for hours, which is exactly the window the number was raised to
+    close.
+    """
+    changed = []
+    for h in entry.get("hooks", []):
+        if is_ours(h.get("command", ""), tool) and h.get("timeout") != timeout:
+            h["timeout"] = timeout
+            changed.append(f"timeout set to {timeout}")
+    return changed
+
+
 def hook_entry(ide: str, guard: str) -> dict:
     return {
         "matcher": GUARD_MATCHER[ide],
         "hooks": [{
             "type": "command",
             "command": guard,
-            "timeout": 5,
+            "timeout": GUARD_TIMEOUT,
             "statusMessage": "secrets-guard...",
         }],
     }
@@ -353,8 +376,10 @@ def patch_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
         return changed
 
     if present:
-        # Already wired — make sure it points at this installation.
+        # Already wired — make sure it points at this installation, and that it
+        # carries the timeout this version writes.
         for entry in present:
+            changed += refresh_timeout(entry, "secrets-guard", GUARD_TIMEOUT)
             for h in entry.get("hooks", []):
                 if is_ours(h.get("command", ""), "secrets-guard") and h["command"] != guard:
                     h["command"] = guard
@@ -413,6 +438,7 @@ def patch_post_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[st
             # alone, and re-running the installer is the only thing that will
             # ever look at it. Widening it here is what makes the Read and Grep
             # coverage reach a machine that already had the hook.
+            changed += refresh_timeout(entry, "secrets-redact", REDACT_TIMEOUT)
             if entry.get("matcher") != REDACT_MATCHER[ide]:
                 entry["matcher"] = REDACT_MATCHER[ide]
                 changed.append(f"post-hook matcher set to {REDACT_MATCHER[ide]}")
@@ -489,6 +515,7 @@ def patch_notice_hooks(ide: str, data: dict, redact: str, remove: bool) -> list[
 
     if present:
         for entry in present:
+            changed += refresh_timeout(entry, "secrets-redact", REDACT_TIMEOUT)
             if entry.get("matcher") != NOTICE_MATCHER:
                 entry["matcher"] = NOTICE_MATCHER
                 changed.append(f"notice-hook matcher set to {NOTICE_MATCHER}")
@@ -555,6 +582,7 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
 
     if present:
         for entry in present:
+            changed += refresh_timeout(entry, "secrets-redact", REDACT_TIMEOUT)
             if entry.get("matcher") != FAILURE_MATCHER:
                 entry["matcher"] = FAILURE_MATCHER
                 changed.append(f"failure-hook matcher set to {FAILURE_MATCHER}")

@@ -551,6 +551,65 @@ else
     no "opencode: a missing configuration exits 3, not 1" "exit $rc"
 fi
 
+# ── an installation that predates the current numbers ───────────────────────
+# Re-running the installer repointed the command and widened the matcher of an
+# entry it found, and never touched its timeout. Measured 2026-09-16 on this
+# machine: every redactor entry still said 10 while the installer had been
+# writing 60 for hours — the very window the number was raised to close.
+fresh
+cat > "$tmp/home/.claude/settings.json" <<'JSON'
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "/opt/env2hell/secrets-guard",
+                  "timeout": 2, "statusMessage": "secrets-guard..."}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "/opt/env2hell/secrets-redact",
+                  "timeout": 10, "statusMessage": "secrets-redact..."}]},
+      {"matcher": "Edit|Write|mcp__.*",
+       "hooks": [{"type": "command", "command": "/opt/env2hell/secrets-redact --warn-only",
+                  "timeout": 10, "statusMessage": "secrets-redact..."}]}
+    ],
+    "PostToolUseFailure": [
+      {"matcher": "Bash|Read|Grep",
+       "hooks": [{"type": "command", "command": "/opt/env2hell/secrets-redact --warn-only",
+                  "timeout": 10, "statusMessage": "secrets-redact..."}]}
+    ]
+  }
+}
+JSON
+run claude
+timeouts="$(python3 - "$(cfg claude)" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+out = []
+for event, blocks in sorted(d.get("hooks", {}).items()):
+    for b in blocks:
+        for h in b.get("hooks", []):
+            c = str(h.get("command", ""))
+            if "secrets-guard" in c:
+                out.append(f"guard={h.get('timeout')}")
+            elif "secrets-redact" in c:
+                out.append(f"redact={h.get('timeout')}")
+print(" ".join(sorted(set(out))))
+PY
+)"
+if [ "$timeouts" = "guard=5 redact=60" ]; then
+    ok "claude: an old installation is brought up to the current timeouts ($timeouts)"
+else
+    no "claude: an old installation is brought up to the current timeouts" "got [$timeouts]"
+fi
+
+# And the matcher that was narrow when it was written.
+if grep -qE 'PostToolUseFailure.*Edit.Write.mcp__' <<< "$(shape claude)"; then
+    ok "claude: the old failure matcher is widened by the same run"
+else
+    no "claude: the old failure matcher is widened by the same run" "$(shape claude)"
+fi
+
 # ── the number that decides whether the redactor finishes ───────────────────
 # A killed PostToolUse hook replaces nothing, so the tool result reaches the
 # model as it was. At the masking pass's measured ~90 KB/s, 10 s covered under

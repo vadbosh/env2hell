@@ -142,6 +142,21 @@ $SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
 # 'secrets-guard' and was repointed at this installation without a word; an
 # audit hook named after the redactor was removed by -Remove. The entries this
 # installer writes are of the form `& "<path>"`, so argv[0] is what to read.
+# An entry that is already wired kept whatever timeout it was written with, so
+# a machine installed before the number changed never saw the new one. Measured
+# 2026-09-16: every redactor entry still said 10 while the installer had been
+# writing 60. Applies to the guard's number too, for the same reason.
+function Update-Timeout ($Entry, $Tool, $Timeout) {
+    $fixed = 0
+    foreach ($h in $Entry.hooks) {
+        if ((Test-OurCommand $h.command $Tool) -and "$($h.timeout)" -ne "$Timeout") {
+            Set-Property $h 'timeout' $Timeout
+            $fixed++
+        }
+    }
+    return $fixed
+}
+
 function Test-OurCommand ($Command, $Tool) {
     $text = "$Command".Trim()
     if ($text -match '^&\s*"([^"]+)"' -or $text -match "^&\s*'([^']+)'") {
@@ -188,7 +203,15 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
     $already = $entries | Where-Object {
         $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-guard' }
     }
-    if ($already) { Say '    = already wired'; return }
+    if ($already) {
+        $fixed = 0
+        foreach ($e in $already) { $fixed += Update-Timeout $e 'secrets-guard' 5 }
+        if ($fixed -eq 0) { Say '    = already wired'; return }
+        Write-Json $Path $data
+        Say $(if ($DryRun) { '    would set the guard timeout to 5' }
+              else         { '    guard timeout set to 5' })
+        return
+    }
 
     $entry = [pscustomobject]@{
         matcher = $matcher
@@ -251,6 +274,7 @@ function Update-RedactConfig ($Name, $Path, $RedactPath) {
         # look at it again.
         $fixed = 0
         foreach ($e in $already) {
+            $fixed += Update-Timeout $e 'secrets-redact' $RedactTimeout
             if ("$($e.matcher)" -ne $matcher) { $e.matcher = $matcher; $fixed++ }
         }
         if ($fixed -eq 0) { Say '    = redactor already wired'; return }
@@ -299,7 +323,18 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
     $already = @($entries | Where-Object {
         $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-redact' }
     })
-    if ($already.Count -gt 0) { Say '    = failure hook already wired'; return }
+    if ($already.Count -gt 0) {
+        $fixed = 0
+        foreach ($e in $already) {
+            $fixed += Update-Timeout $e 'secrets-redact' $RedactTimeout
+            if ("$($e.matcher)" -ne $FailureMatcher) { $e.matcher = $FailureMatcher; $fixed++ }
+        }
+        if ($fixed -eq 0) { Say '    = failure hook already wired'; return }
+        Write-Json $Path $data
+        Say $(if ($DryRun) { '    would refresh the failure hook' }
+              else         { '    failure hook refreshed' })
+        return
+    }
 
     $entry = [pscustomobject]@{
         matcher = $FailureMatcher
@@ -352,6 +387,7 @@ function Update-NoticeConfig ($Name, $Path, $RedactPath) {
     if ($already.Count -gt 0) {
         $fixed = 0
         foreach ($e in $already) {
+            $fixed += Update-Timeout $e 'secrets-redact' $RedactTimeout
             if ("$($e.matcher)" -ne $NoticeMatcher) { $e.matcher = $NoticeMatcher; $fixed++ }
         }
         if ($fixed -eq 0) { Say '    = notice hook already wired'; return }
