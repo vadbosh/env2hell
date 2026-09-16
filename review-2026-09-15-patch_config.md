@@ -724,7 +724,23 @@ comment records an incident it caused on Codex (2026-09-14, three duplicate
 entries). Worth pinning that incident as a test case **before** touching it —
 see the fix order.
 
-**D5 — a lock, or a re-read inside the write?** A10 left last-writer-wins in
+**D5 — decided 2026-09-16: two installers at once are unsupported, and that
+sentence is about Windows.** On POSIX the write is atomic and the temp name is
+unique, so a race costs the slower run's patch and never the file: worth
+recording as last-writer-wins, not as a prohibition. On Windows `Write-Json`
+has no temp file at all —
+
+```
+install.ps1:60      Copy-Item $Path "$Path.bak.$Stamp" -Force
+install.ps1:61      ($Data | ConvertTo-Json -Depth 100) | Set-Content -Encoding UTF8 $Path
+```
+
+— so two installers there can tear the configuration, not merely overwrite each
+other's change. Neither a lock nor a re-read is being added; what is owed is a
+line in the Windows installer's own documentation saying so. The reasoning that
+led here, kept because it is what a later reader will re-derive:
+
+**a lock, or a re-read inside the write?** A10 left last-writer-wins in
 place (see the item). Two ways out, neither free: a lock file beside the config,
 which is a new failure mode when a killed run leaves one behind; or re-reading
 and re-patching the file inside `save`, which makes `save` know about patching
