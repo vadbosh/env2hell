@@ -137,6 +137,13 @@ the property that matters.
 
 ## A2 — a private key block is announced and then handed over
 
+**✔ Closed 2026-09-16** (`d78a6c1`). A block rule: the header sets a flag, the
+footer clears it, the body is replaced line for line. Both markers anchored to
+a line of their own, so the phrase in prose swallows nothing. Ported the same
+day — the port needed a variable-length lookbehind instead, see its review.
+Tests: *masks an OpenSSH private key, line for line*, *masks an RSA private
+key*, *the phrase in a sentence does not swallow what follows*.
+
 **Class: silent wrong result.** The output *looks* redacted: the first line
 comes back as `<REDACTED:25>`, which reads as "handled".
 
@@ -175,6 +182,11 @@ inside ordinary prose, which must not start swallowing the rest of a document.
 
 ## A3 — `Authorization: Bearer …` is not a label this file knows
 
+**✔ Closed 2026-09-16** (`d78a6c1`). `authorization` joined the label list and
+the separator admits an optional scheme word, so `Bearer` stays readable and
+the token after it does not. Tests: *an HTTP bearer token*, *the same, lower
+case*, *keeps the scheme word readable*, *a header with no value after it*.
+
 **Class: silent wrong result.**
 
 **Where:** `LABEL`, lines 69–78. It has `auth[-_]?token`, and neither
@@ -201,6 +213,12 @@ no longer see what kind of credential went.
 ---
 
 ## A4 — a password with punctuation in it is not masked
+
+**✔ Closed 2026-09-16** (`d78a6c1`). A quoted value is bounded by its quotes,
+with a floor of 8 rather than 16 — inside quotes the writer has already said
+where the value ends. The quotes stay in the output. Tests: *a quoted password
+with punctuation*, *the same in single quotes*, *a quoted name, not a value*,
+*a quoted value too short to be a secret*.
 
 **Class: silent wrong result.**
 
@@ -231,6 +249,10 @@ short value.
 ---
 
 ## A5 — the JSON spelling of a labelled secret is missed
+
+**✔ Closed 2026-09-16** (`d78a6c1`). An optional closing quote before the
+separator, in the same single pattern A1 introduced — not a third call. Tests:
+*the JSON spelling of a labelled secret*, *the JSON spelling of a name*.
 
 **Class: silent wrong result.**
 
@@ -446,31 +468,30 @@ cases against both" is what the file claims.
 1. ~~**A1**~~ — **done 2026-09-16**, alone and in its own commit, as the order
    asked.
 2. **A6** — one line, independent of the pattern work.
-3. **A2** — the private key block. Independent of A3–A5: it is a state flag,
-   not a pattern change.
-4. **A3, A4, A5 together** — all three touch LABEL/VALUE/sep, and each changes
-   what the next one's reproduction runs through. Write the three failing tests
-   first, then make them pass as one change, then re-run the whole suite and
-   read the `keep` half specifically.
+3. ~~**A2**~~ — **done 2026-09-16.**
+4. ~~**A3, A4, A5 together**~~ — **done 2026-09-16**, exactly as the order said:
+   thirteen failing cases first, then one change, then the whole suite with the
+   `keep` half read line by line. It found nothing broken there, and the
+   corpora diff between the two ports stayed at zero.
 5. **A7** — after A1, because A1 removes most of the kills that cause it.
 6. **A8** — independent of everything above; the PowerShell port already does
    it right, so the behaviour to match is on disk.
 
-**Exposure while you work.** A2 through A5 are all "a credential in this shape
-reaches the model" and all stay open until step 3 and step 4 land. There is no
-interim measure for them — a wider pattern is exactly the change that needs the
-tests. What can be said plainly: until then, a private key read through `Read`,
-a Bearer token, a punctuated password and a JSON `"password"` field are not
-masked, and the transcript is where they end up.
+**Exposure, as it stands on 2026-09-16.** A2–A5 are closed in both ports on the
+same day they were written up. What remains open is A6 (the warning undercounts
+credentials), A7 (`/tmp` litter after a kill) and A8 (`--filter` adds a byte) —
+none of which is "a credential reaches the model unmasked".
 
 ---
 
 # Done when
 
 ```bash
-bash tests/test_redact.sh        | tail -1   # passed >= 74, failed 0
-                                             #   (66 today, +8 from A2–A6)
-bash tests/test_redact.sh --pwsh | tail -1   # passed >= 72, failed 0
+bash tests/test_redact.sh        | tail -1   # passed 79, failed 0 (66 at the
+                                             #   baseline, +13 from A2–A5);
+                                             #   >= 82 when A6–A8 land
+bash tests/test_redact.sh --pwsh | tail -1   # passed 77, failed 0 (the same
+                                             #   minus the two jq cases)
 bash tests/test_guard.sh         | tail -1   # passed 76, failed 0
 bash tests/test_safe_env.sh      | tail -1   # passed  9, failed 0  (I2)
 bash tests/test_install.sh       | tail -1   # passed 33, failed 0
@@ -480,10 +501,10 @@ shellcheck -S style bin/secrets-redact       # info-level only, exit 0
 | Item | The assertion |
 |---|---|
 | A1 | ✔ **closed 2026-09-16** — 1.1 MB in 0.36 s; the standing assertion is a multi-MB payload through `--filter` under `timeout 10` coming back non-empty |
-| A2 | no base64 line of an OpenSSH or RSA block survives; prose saying "BEGIN PRIVATE KEY" does |
-| A3 | `Authorization: Bearer …` is masked, the scheme word is not |
-| A4 | a quoted password containing `!` and `#` is masked, in both quoting styles |
-| A5 | `{"password": "…"}` is masked; `{"password_field": "user_password"}` is not |
+| A2 | ✔ **closed 2026-09-16** — *masks an OpenSSH private key, line for line*; the phrase in prose swallows nothing after it |
+| A3 | ✔ **closed 2026-09-16** — *an HTTP bearer token*, *keeps the scheme word readable* |
+| A4 | ✔ **closed 2026-09-16** — *a quoted password with punctuation*, *the same in single quotes* |
+| A5 | ✔ **closed 2026-09-16** — *the JSON spelling of a labelled secret*; the name form is kept |
 | A6 | three values on one line produce a warning that says three |
 | A7 | a killed run leaves nothing a later run does not sweep |
 | A8 | input with no trailing newline comes back with none, through `--filter` as well as through the hook |
@@ -498,7 +519,7 @@ time bin/secrets-redact --filter < /tmp/<your-sandbox>/p1m.txt > /dev/null
 
 ---
 
-**A: 8 — 1 closed (A1), 7 open (A2–A8). B: 2, C: 1, D: 3 open questions.**
+**A: 8 — 5 closed (A1–A5), 3 open (A6, A7, A8). B: 2, C: 1, D: 3 open questions.**
 
 File: `/home/env2hell/review-2026-09-16-secrets-redact.md`. Sandbox with every
 probe and payload: `/tmp/tmp.snGXbDrywJ` (`r1.sh`, `r2.sh`, the `v-*.awk`
