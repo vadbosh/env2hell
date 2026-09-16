@@ -14,6 +14,11 @@
     Idempotent: a configuration file about to change is copied to
     <file>.bak.<timestamp> first, and re-running rewrites only what differs.
 
+    Run one installer at a time. Each configuration is written in place, not
+    through a temporary file, so two installers running together can leave one
+    half-written. The POSIX installer renames a temporary file into place and
+    only ever loses the slower run's change.
+
 .PARAMETER DryRun
     Print what would happen and change nothing.
 

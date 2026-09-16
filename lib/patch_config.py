@@ -31,9 +31,19 @@ about to change is copied to <file>.bak.<timestamp> first, keeps its own mode,
 and — when it is a symlink — is edited through the link rather than replaced.
 
 Usage:
-    patch_config.py <ide> --guard PATH [--plugin PATH] [--remove] [--dry-run]
+    patch_config.py <ide> --guard PATH [--redact PATH] [--with-rule]
+                          [--remove] [--dry-run] [--print]
 
-Exit codes: 0 done (or nothing to do), 1 error, 3 config file absent.
+Exit codes, and they mean the same thing to a person and to install.sh:
+
+    0  wired, or already current
+    1  this assistant was NOT wired — a configuration that is not JSON, not an
+       object, or a .jsonc carrying comments, which cannot be rewritten without
+       dropping them. install.sh reports it and finishes non-zero.
+    3  no configuration file for this assistant. Not an error: it means the
+       assistant is not installed here.
+
+Every diagnostic goes to stderr; only the running commentary goes to stdout.
 """
 
 from __future__ import annotations
@@ -172,9 +182,66 @@ def file_rules() -> dict:
     return {f"{r} {p}": "deny" for r in READERS for p in SECRET_FILES}
 
 
+def strip_jsonc(text: str) -> str:
+    """JSONC minus its comments, with strings left alone.
+
+    A character at a time rather than a regular expression, because the only
+    hard part is telling a comment from `"https://example"` and from a `\\"`
+    inside a string — which is exactly what a regular expression gets wrong.
+    Comments become spaces rather than nothing, so a column in an error message
+    still points where the reader is looking.
+    """
+    out = []
+    i, n = 0, len(text)
+    in_string = False
+    while i < n:
+        c = text[i]
+        if in_string:
+            out.append(c)
+            if c == "\\" and i + 1 < n:      # an escaped quote is not the end
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+            i += 1
+        elif c == '"':
+            in_string = True
+            out.append(c)
+            i += 1
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                out.append(" ")
+                i += 1
+        elif text.startswith("/*", i):
+            while i < n and not text.startswith("*/", i):
+                out.append("\n" if text[i] == "\n" else " ")
+                i += 1
+            out.append("  ")
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def has_comments(path: str) -> bool:
+    """A .jsonc that is only JSON can be rewritten; one with comments cannot."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    return strip_jsonc(text) != text
+
+
 def load(path: str):
     with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+        text = fh.read()
+    # Opencode reads opencode.jsonc as well, and a file earns that extension by
+    # carrying comments. Reading one was the whole reason _opencode_config
+    # exists, and json.load refused it: the installer then said nothing useful
+    # and left Opencode with no permission rules at all.
+    if path.endswith(".jsonc"):
+        return json.loads(strip_jsonc(text))
+    return json.loads(text)
 
 
 def save(path: str, data, dry_run: bool) -> None:
@@ -536,11 +603,28 @@ def main() -> int:
     ap.add_argument("--with-rule", action="store_true",
                     help="also register the rule file (opencode needs it listed)")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--print", dest="print_wiring", action="store_true",
+                    help="print the wiring as JSON and change nothing "
+                         "(for a config this patcher must not rewrite)")
     args = ap.parse_args()
+
+    if args.print_wiring:
+        wanted = {}
+        if args.ide == "opencode":
+            patch_opencode(wanted, remove=False, with_rule=args.with_rule)
+        else:
+            patch_hooks(args.ide, wanted, args.guard or "<path>/secrets-guard", False)
+            patch_post_hooks(args.ide, wanted,
+                             redact_command(args.ide, args.redact or "<path>/secrets-redact"),
+                             False)
+            patch_failure_hooks(args.ide, wanted, args.redact or "<path>/secrets-redact", False)
+            patch_notice_hooks(args.ide, wanted, args.redact or "<path>/secrets-redact", False)
+        print(json.dumps(wanted, indent=2, ensure_ascii=False))
+        return 0
 
     path = CONFIG[args.ide]
     if not os.path.exists(path):
-        print(f"    config not found: {path}")
+        print(f"    config not found: {path}", file=sys.stderr)
         return 3
 
     if args.ide in GUARD_MATCHER and not args.guard and not args.remove:
@@ -579,6 +663,22 @@ def main() -> int:
     if not changed:
         print("    = already current")
         return 0
+
+    # A JSONC file that actually carries comments cannot be written back: the
+    # dump would drop every one of them, and a mangled configuration is worse
+    # than an unwired one. Reading it is still worth doing — that is how
+    # "already current" above can answer truthfully — but a change has to be
+    # made by hand or the file renamed.
+    if path.endswith(".jsonc") and has_comments(path):
+        print(f"    {path} carries comments; rewriting it would drop them",
+              file=sys.stderr)
+        print("    rename it to opencode.json (Opencode reads both) and re-run,",
+              file=sys.stderr)
+        print(f"    or merge this in by hand: {sys.argv[0]} {args.ide} --print",
+              file=sys.stderr)
+        for line in changed:
+            print(f"    would have: {line}", file=sys.stderr)
+        return 1
 
     save(path, data, args.dry_run)
     prefix = "    would " if args.dry_run else "    "

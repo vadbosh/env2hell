@@ -247,6 +247,29 @@ a second entry is added beside it.
 
 ## A4 — an Opencode `.jsonc` config is unreadable, and the installer reports success anyway
 
+**✔ Closed 2026-09-16, in both halves.**
+
+`load` strips comments before parsing (`strip_jsonc`, a character at a time —
+a regular expression cannot tell `//` inside `"https://…"` from a comment). So
+a `.jsonc` is now *read*, which is what lets "= already current" answer
+truthfully on such a machine. It is not *rewritten* when it actually carries
+comments: `json.dump` would drop every one of them, and I6 says a mangled
+configuration is worse than an unwired one. Instead the run exits 1, names the
+file, and offers the two ways forward — rename it to `opencode.json`, which
+Opencode also reads, or merge the wiring in by hand from the new
+`patch_config.py opencode --print`. A `.jsonc` with no comments in it is
+ordinary JSON and is wired normally.
+
+`install.sh` no longer ends the call in `|| true`. Exit 1 marks the assistant
+unwired, prints a red line, is repeated in the verify section, and makes the
+whole run finish non-zero; exit 3 still means "this assistant is not installed
+here" and is not an error.
+
+Tests: *three runs write the rules once (394 plugin)*, *a commented .jsonc is
+refused loudly and left untouched*, *a .jsonc with no comments in it is wired
+normally*, *a missing configuration exits 3, not 1*. Before today nothing in
+`tests/` ran `patch_opencode` at all.
+
 **Class: silent wrong result.**
 
 **Where:** `_opencode_config` lines 49–66 (picks `.jsonc` when it exists),
@@ -592,6 +615,10 @@ instead of a traceback.
 
 ## B1 — the docstring promises `.jsonc` support the loader does not have
 
+**✔ Closed 2026-09-16** by making the code true rather than the text weaker:
+the loader reads JSONC now. What the docstring gained is the limit — such a
+file is read but not rewritten while it carries comments.
+
 **Where:** module docstring line 9, `_opencode_config` docstring lines 50–60.
 The function's whole justification is a machine that uses `opencode.jsonc`;
 `load` cannot read one that has a comment in it. See A4 for the reproduction.
@@ -600,6 +627,11 @@ The function's whole justification is a machine that uses `opencode.jsonc`;
 selected but only plain JSON can be patched. Not both.
 
 ## B2 — the stated exit codes are discarded by the only caller, and they use different streams
+
+**✔ Closed 2026-09-16.** The docstring states each code with what it means to a
+person *and* to `install.sh`; `install.sh` acts on 1 and finishes non-zero;
+`config not found` moved to stderr, so every diagnostic is on one stream and
+stdout carries only the running commentary.
 
 **Where:** docstring line 35 ("Exit codes: 0 done (or nothing to do), 1 error,
 3 config file absent") against `install.sh` lines 160–167 (`|| true`).
@@ -841,9 +873,8 @@ reproductions run through.
    fix turned out not to need the marker key of D4 — reading `argv[0]` answers
    the same question without touching the entry's schema, so nothing an
    assistant might validate was invented.
-4. **A4** — the `.jsonc` decision plus the `install.sh` exit-code change. It
-   needs the Opencode test group, which does not exist yet; write the group
-   first (it is also what A7 and C1 need).
+4. ~~**A4**~~ — **done 2026-09-16**, with the Opencode test group it needed.
+   B1 and B2 closed with it: they were the same defect described in prose.
 5. **A7** — the PowerShell parity fix and the mechanical diff test. Last because
    it re-ports whatever steps 1–4 changed; doing it earlier means doing it twice.
 6. **A1** — the timeout number. Last on purpose, and it is the worst item.
@@ -872,10 +903,10 @@ bash tests/test_redact.sh   | tail -1     # passed 66, failed 0 (62 at baseline,
 bash tests/test_redact.sh --pwsh | tail -1  # passed 64, failed 0 (60 at baseline)
 bash tests/test_safe_env.sh | tail -1     # passed  9, failed 0
 bash tests/test_scan.sh     | tail -1     # passed 16, failed 0
-bash tests/test_install.sh  | tail -1     # passed 29, failed 0 today (14 at
+bash tests/test_install.sh  | tail -1     # passed 33, failed 0 today (14 at
                                           #   baseline; +8 A5/A6/A8/A9/A10,
-                                          #   +4 A2/A3, +2 A1, +1 the port);
-                                          #   >= 31 when A4 and A7 land
+                                          #   +4 A2/A3, +2 A1, +1 the port,
+                                          #   +4 A4); >= 35 when A7 lands
 pwsh -NoProfile -File tests/test_ownership.ps1   # passed 8, failed 0
 python3 -m py_compile lib/patch_config.py # no output, exit 0
 shellcheck -S style install.sh uninstall.sh release.sh bin/* tools/* tests/*.sh
@@ -888,14 +919,14 @@ New groups that must appear in `tests/test_install.sh`, one per item:
 |---|---|
 | A2 | ✔ **closed 2026-09-16** — *--remove takes ours out and leaves theirs*, plus `tests/test_ownership.ps1` for the port |
 | A3 | ✔ **closed 2026-09-16** — *install leaves a third-party hook and its arguments alone* |
-| A4 | `opencode.jsonc` with a comment: the run does not report success, and `install.sh` surfaces it |
+| A4 | ✔ **closed 2026-09-16** — *a commented .jsonc is refused loudly and left untouched*, *a .jsonc with no comments in it is wired normally*, *three runs write the rules once*, *a missing configuration exits 3, not 1* |
 | A5 | ✔ **closed 2026-09-16** — *a symlinked config stays a link and the target is wired* |
 | A6 | ✔ **closed 2026-09-16** — *a 600 config is still 600 after a patch* |
 | A7 | ◐ the timeout is diffed against `lib/patch_config.py` and the ownership logic is exercised; the matchers are still unchecked, and the `Edit\|Write\|mcp__.*` entry is still missing |
 | A8 | ✔ **closed 2026-09-16** — *a config holding a list is refused with a sentence* (exit 1, no `Traceback`) |
 | A9 | ✔ **closed 2026-09-16** — *config untouched*, *the leftover copy is not world-readable*, *the next run sweeps a stale temp file*. The original wording asked for no leftover at all; a SIGKILL cannot promise that, so the assertion is mode + sweep |
 | A10 | ◐ **half closed 2026-09-16** — *two patchers at once both finish cleanly* and *the config a race leaves behind is readable and wired once*. Both edits surviving is still open: see D5 |
-| — | Opencode: three runs, `394 → = already current → = already current` |
+| — | ✔ **closed 2026-09-16** — Opencode: three runs, `394 → = already current → = already current` |
 | — | ✔ **closed 2026-09-15** — `tests/test_redact.sh` lines 168–171 keep a backup name, the same with a path, an `ls -la` line carrying one, and `*.env2hell.tmp` byte for byte: `passed 66, failed 0` and `--pwsh passed 64, failed 0` |
 
 And the two hand checks that close A1:
@@ -911,8 +942,9 @@ rg -n '"timeout"' lib/patch_config.py install.ps1
 
 ---
 
-**A: 10 — 7 closed (A2, A3, A5, A6, A8, A9, A10 half), 3 open (A1 with an
-interim measure, A4, A7 partly). B: 2, C: 3, D: 5 open questions.**
+**A: 10 — 8 closed (A2, A3, A4, A5, A6, A8, A9, A10 half), 2 open: A1 (interim
+measure taken, the repair belongs to `bin/secrets-redact`) and A7 (partly).
+B: 2 — both closed. C: 3 open. D: 5, one of them decided.**
 
 File: `/home/env2hell/review-2026-09-15-patch_config.md`. Sandbox with every
 probe script and payload: `/tmp/tmp.snGXbDrywJ` (nothing in it is deleted).

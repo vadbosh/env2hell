@@ -406,6 +406,92 @@ else
        "$still_wired"
 fi
 
+# ── opencode, which nothing here used to touch ──────────────────────────────
+# patch_opencode writes 394 permission rules into a live configuration and had
+# no test at all. It also has a second filename to deal with: Opencode reads
+# opencode.jsonc too, and a file earns that extension by carrying comments.
+
+oc_dir="$tmp/home/.config/opencode"
+oc_run () {                     # oc_run — prints nothing, returns the exit code
+    HOME="$tmp/home" python3 "$PATCH" opencode --with-rule >/dev/null 2>&1
+}
+oc_fresh () {                   # oc_fresh <filename> <content>
+    rm -rf "${tmp:?}/home/.config"
+    mkdir -p "$oc_dir"
+    printf '%s' "$2" > "$oc_dir/$1"
+}
+
+oc_fresh opencode.json '{}
+'
+oc_run; first_rc=$?
+rules="$(python3 - "$oc_dir/opencode.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(len(d.get("permission", {}).get("bash", {})), d.get("plugin", []) and "plugin" or "no-plugin")
+PY
+)"
+oc_run; oc_run; second="$(python3 - "$oc_dir/opencode.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(len(d.get("permission", {}).get("bash", {})), len(d.get("plugin", [])), len(d.get("instructions", [])))
+PY
+)"
+if [ "$first_rc" -eq 0 ] && [ "$rules" = "394 plugin" ] && [ "$second" = "394 1 1" ]; then
+    ok "opencode: three runs write the rules once ($rules)"
+else
+    no "opencode: three runs write the rules once" "first=$rules after three=$second rc=$first_rc"
+fi
+
+# A .jsonc with comments: readable, but not rewritable — the dump would drop
+# every comment, and a mangled configuration is worse than an unwired one.
+oc_fresh opencode.jsonc '{
+  // the model this machine uses
+  "model": "anthropic/claude-opus-5"
+}
+'
+before="$(cat "$oc_dir/opencode.jsonc")"
+out="$(HOME="$tmp/home" python3 "$PATCH" opencode --with-rule 2>&1)"
+rc=$?
+after="$(cat "$oc_dir/opencode.jsonc")"
+case "$out" in
+    *"carries comments"*) said=yes ;;
+    *)                    said=no  ;;
+esac
+if [ "$rc" -eq 1 ] && [ "$said" = yes ] && [ "$before" = "$after" ]; then
+    ok "opencode: a commented .jsonc is refused loudly and left untouched"
+else
+    no "opencode: a commented .jsonc is refused loudly and left untouched" \
+       "exit $rc, said=$said, changed=$([ "$before" = "$after" ] && echo no || echo yes):
+$(printf '%s\n' "$out" | sed 's/^/        /')"
+fi
+
+# The same extension without comments is ordinary JSON, and gets wired.
+oc_fresh opencode.jsonc '{"model": "anthropic/claude-opus-5"}
+'
+oc_run; rc=$?
+wired="$(python3 - "$oc_dir/opencode.jsonc" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(len(d.get("permission", {}).get("bash", {})))
+PY
+)"
+if [ "$rc" -eq 0 ] && [ "$wired" = 394 ]; then
+    ok "opencode: a .jsonc with no comments in it is wired normally"
+else
+    no "opencode: a .jsonc with no comments in it is wired normally" "exit $rc, rules $wired"
+fi
+
+# No configuration at all is not a failure — exit 3, so the installer can tell
+# "this assistant is not here" from "this assistant was left unprotected".
+rm -rf "${tmp:?}/home/.config"
+HOME="$tmp/home" python3 "$PATCH" opencode --with-rule >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 3 ]; then
+    ok "opencode: a missing configuration exits 3, not 1"
+else
+    no "opencode: a missing configuration exits 3, not 1" "exit $rc"
+fi
+
 # ── the number that decides whether the redactor finishes ───────────────────
 # A killed PostToolUse hook replaces nothing, so the tool result reaches the
 # model as it was. At the masking pass's measured ~90 KB/s, 10 s covered under

@@ -139,6 +139,7 @@ esac
 
 # ── assistants ──────────────────────────────────────────────────────────────
 found=0
+unwired=""          # assistants the patcher refused to touch
 while IFS= read -r ide; do
     [ -n "$ide" ] || continue
     found=1
@@ -156,14 +157,25 @@ while IFS= read -r ide; do
     # when the file is listed in its configuration.
     rule_flag=""
     [ "$WITH_RULE" -eq 1 ] && rule_flag="--with-rule"
-    if [ "$DRY_RUN" -eq 1 ]; then
-        "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
-              --redact "$BIN_DIR/secrets-redact" \
-              ${rule_flag:+"$rule_flag"} --dry-run || true
-    else
-        "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
-              --redact "$BIN_DIR/secrets-redact" \
-              ${rule_flag:+"$rule_flag"} || true
+    dry_flag=""
+    [ "$DRY_RUN" -eq 1 ] && dry_flag="--dry-run"
+
+    # The exit code used to be discarded with `|| true`. It is the only thing
+    # that says an assistant was left unwired — a configuration this patcher
+    # cannot read means no permission rules and no plugin registration, and the
+    # run went on to print a cheerful verify section regardless.
+    #
+    #   0  wired, or already current      3  no configuration file — not an error
+    #   1  something went wrong, and this assistant is not protected
+    set +e
+    "$PY" "$SRC/lib/patch_config.py" "$ide" --guard "$BIN_DIR/secrets-guard" \
+          --redact "$BIN_DIR/secrets-redact" \
+          ${rule_flag:+"$rule_flag"} ${dry_flag:+"$dry_flag"}
+    patch_rc=$?
+    set -e
+    if [ "$patch_rc" -eq 1 ]; then
+        bad "    $ide was NOT wired — see the message above"
+        unwired="$unwired $ide"
     fi
 
     if [ "$WITH_RULE" -eq 1 ]; then
@@ -181,6 +193,11 @@ fi
 
 # ── verify ──────────────────────────────────────────────────────────────────
 say "── verify ──"
+if [ -n "$unwired" ]; then
+    bad "  not wired:$unwired"
+    warn "    the assistants above still print their secrets; the message from"
+    warn "    lib/patch_config.py above says why"
+fi
 if [ "$DRY_RUN" -eq 1 ]; then
     warn "  dry run — nothing was installed"
     exit 0
@@ -217,6 +234,10 @@ if [ "$blocked" = "2" ] && [ "$allowed" = "0" ]; then
     elif [ -x "$redact" ]; then
         warn "  secrets-redact installed, but jq is missing — it will do nothing"
     fi
+
+    # The guard works, but an assistant this patcher could not touch is still
+    # unprotected — the run has not succeeded, whatever the probes say.
+    [ -z "$unwired" ] || exit 1
 
     say ""
     say "  Restart your assistant: hooks and plugins are read at start-up."
