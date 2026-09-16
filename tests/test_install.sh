@@ -226,6 +226,65 @@ else
     no "claude: --remove still takes every entry of ours out" "left: $ours_left"
 fi
 
+# ── what the patch does to the rest of the file ─────────────────────────────
+# Two decisions taken on 2026-09-16, both about a reader who keeps their
+# dotfiles in git: the backups stop piling up, and the indent is the file's own
+# rather than this program's.
+
+fresh
+printf '{}\n' > "$tmp/home/.claude/settings.json"
+for stamp in 20260901-120000 20260902-120000 20260903-120000 20260904-120000; do
+    cp "$tmp/home/.claude/settings.json" "$tmp/home/.claude/settings.json.bak.$stamp"
+done
+run claude
+kept="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.*' | wc -l)"
+newest_gone="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.20260904-120000' | wc -l)"
+oldest_gone="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.20260901-120000' | wc -l)"
+if [ "$kept" -eq 3 ] && [ "$newest_gone" -eq 1 ] && [ "$oldest_gone" -eq 0 ]; then
+    ok "claude: three backups are kept and the oldest go"
+else
+    no "claude: three backups are kept and the oldest go" \
+       "$kept left; newest present=$newest_gone oldest present=$oldest_gone"
+fi
+
+# The indent is read from the file, not imposed on it. A configuration written
+# with four spaces used to come back with two, which is 68 changed lines on a
+# file where four lines actually changed.
+indent_of () {                  # indent_of <file> — the leading run of line 2
+    python3 - "$1" <<'PY'
+import sys
+for line in open(sys.argv[1]):
+    body = line.lstrip(" \t")
+    if body and body != line:
+        print(len(line) - len(body)); break
+else:
+    print("none")
+PY
+}
+
+fresh
+printf '{\n    "model": "opus",\n    "env": {\n        "FOO": "bar"\n    }\n}\n' \
+    > "$tmp/home/.claude/settings.json"
+before_indent="$(indent_of "$tmp/home/.claude/settings.json")"
+run claude
+after_indent="$(indent_of "$tmp/home/.claude/settings.json")"
+if [ "$before_indent" = 4 ] && [ "$after_indent" = 4 ]; then
+    ok "claude: a four-space configuration stays four-space"
+else
+    no "claude: a four-space configuration stays four-space" \
+       "was $before_indent, now $after_indent"
+fi
+
+fresh
+printf '{\n  "model": "opus"\n}\n' > "$tmp/home/.claude/settings.json"
+run claude
+if [ "$(indent_of "$tmp/home/.claude/settings.json")" = 2 ]; then
+    ok "claude: a two-space configuration stays two-space"
+else
+    no "claude: a two-space configuration stays two-space" \
+       "now $(indent_of "$tmp/home/.claude/settings.json")"
+fi
+
 # ── the file on disk, not the wiring inside it ──────────────────────────────
 # Every case below is a way to patch a configuration correctly and damage it
 # anyway: the hook entries land, and something else about the file is wrong —

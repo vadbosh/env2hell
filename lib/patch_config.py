@@ -73,6 +73,12 @@ STALE_TEMP_SECONDS = 60
 # redactor's throughput, and this number is what holds until that lands.
 REDACT_TIMEOUT = 60
 
+# How many timestamped backups of one configuration file to keep. Every changing
+# run writes one and nothing ever removed them: 21 copies of settings.json were
+# found in one live ~/.claude, each carrying whatever the `env` block holds.
+# Three is enough to undo a bad install and small enough not to be a pile.
+BACKUPS_KEPT = 3
+
 def _opencode_config() -> str:
     """Whichever config file Opencode reads here, in the order it reads them.
 
@@ -232,6 +238,23 @@ def has_comments(path: str) -> bool:
     return strip_jsonc(text) != text
 
 
+def detect_indent(text: str):
+    """The indent this file already uses, as json.dump wants it.
+
+    A patch used to rewrite every line of the file with `indent=2`: 68 changed
+    lines on a configuration of three keys, where four lines were the actual
+    change. Harmless in meaning, expensive for anyone keeping their dotfiles in
+    git — which is exactly the reader who also keeps them as a symlink.
+    """
+    for line in text.splitlines():
+        body = line.lstrip(" \t")
+        if not body or body == line:
+            continue                      # blank, or not indented
+        lead = line[: len(line) - len(body)]
+        return "\t" if "\t" in lead else len(lead)
+    return 2                              # nothing to learn from; the old default
+
+
 def load(path: str):
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
@@ -253,8 +276,14 @@ def save(path: str, data, dry_run: bool) -> None:
     # later pull silently stops reaching the assistant. Follow the link and edit
     # what it points at.
     path = os.path.realpath(path)
+    with open(path, encoding="utf-8") as fh:
+        indent = detect_indent(fh.read())
+
     stamp = time.strftime("%Y%m%d-%H%M%S")
     shutil.copy2(path, f"{path}.bak.{stamp}")
+    # The names carry %Y%m%d-%H%M%S, so sorting them as text sorts them by age.
+    for stale in sorted(glob.glob(f"{path}.bak.*"), reverse=True)[BACKUPS_KEPT:]:
+        os.unlink(stale)
 
     # A process killed with SIGKILL runs no `finally`, so the sweep is what
     # actually clears the litter of an earlier crash: same directory, same
@@ -283,7 +312,7 @@ def save(path: str, data, dry_run: bool) -> None:
             # the original's mode instead of the umask's, which is also what
             # stops a 600 config from coming back 644 after the rename.
             os.fchmod(fh.fileno(), mode)
-            json.dump(data, fh, indent=2, ensure_ascii=False)
+            json.dump(data, fh, indent=indent, ensure_ascii=False)
             fh.write("\n")
         os.replace(tmp, path)
     finally:
