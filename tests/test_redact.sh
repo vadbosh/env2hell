@@ -159,6 +159,16 @@ check_shape keep 'client_secret = var.oidc_application_client_secret' 'a Terrafo
 check_shape keep 'kubectl get secret prometheus-operator -n mon' 'a kebab-case object name'
 check_shape keep 'token = $GITHUB_TOKEN_VALUE'                   'a shell variable, not its value'
 check_shape keep 'private_key = /etc/ssl/private/server.key'     'a path'
+# A timestamped backup name is fifteen digits and a hyphen — the shape of a
+# secret to anything that scores on length alone, and the shape this project's
+# own installer writes on every patch (%Y%m%d-%H%M%S). It passes today because
+# tier 1 has no pattern for it and tier 2 needs a credential label on the line;
+# nothing pinned that, so a later widening of tier 2 would turn every `ls -la`
+# of a config directory into <REDACTED:…> and nobody would learn it here.
+check_shape keep 'settings.json.bak.20260915-224647'             'a timestamped backup name'
+check_shape keep '~/.claude/settings.json.bak.20260915-224647'   'the same with a path'
+check_shape keep '-rw------- 1 root root 4096 Sep 15 22:46 settings.json.bak.20260915-224647' 'an ls -la line carrying one'
+check_shape keep 'settings.json.env2hell.tmp'                    'the installer temp name'
 
 check_shape mask "croc --pass $HEX code"                         'a labelled hex password'
 check_shape mask "TOKEN: $HEX"                                   'an uppercase label'
