@@ -597,10 +597,20 @@ for event, blocks in sorted(d.get("hooks", {}).items()):
 print(" ".join(sorted(set(out))))
 PY
 )"
-if [ "$timeouts" = "guard=5 redact=60" ]; then
+# The expectation is read from the constants rather than written out here: this
+# line said "guard=5" and had to be edited by hand the day GUARD_TIMEOUT moved
+# to 30, which is a test failing for the one reason a test must not.
+want_timeouts="$(python3 - "$PATCH" <<'PY'
+import runpy, sys
+mod = runpy.run_path(sys.argv[1])
+print(f"guard={mod['GUARD_TIMEOUT']} redact={mod['REDACT_TIMEOUT']}")
+PY
+)"
+if [ "$timeouts" = "$want_timeouts" ]; then
     ok "claude: an old installation is brought up to the current timeouts ($timeouts)"
 else
-    no "claude: an old installation is brought up to the current timeouts" "got [$timeouts]"
+    no "claude: an old installation is brought up to the current timeouts" \
+       "want [$want_timeouts] got [$timeouts]"
 fi
 
 # And the matcher that was narrow when it was written.
@@ -645,7 +655,8 @@ py_values="$(python3 - "$PATCH" <<'PY'
 import runpy, sys
 mod = runpy.run_path(sys.argv[1])
 for value in (mod["REDACT_MATCHER"]["claude"], mod["NOTICE_MATCHER"],
-              mod["FAILURE_MATCHER"], mod["REDACT_TIMEOUT"]):
+              mod["FAILURE_MATCHER"], mod["REDACT_TIMEOUT"],
+              mod["GUARD_TIMEOUT"]):
     print(value)
 PY
 )"
@@ -675,6 +686,7 @@ the redactor matcher|RedactMatcher
 the notice matcher|NoticeMatcher
 the failure matcher|FailureMatcher
 the redactor timeout|RedactTimeout
+the guard timeout|GuardTimeout
 PAIRS
 
 # ── the same question, asked of the PowerShell port ─────────────────────────
@@ -835,7 +847,7 @@ $(diff <(printf '%s\n' "$ps_first") <(ps_shape) | sed 's/^/        /')"
 $(printf '%s\n' "$ps_first" | sed 's/^/        /')"
         fi
     done <<'ENTRIES'
-the guard, before the command|PreToolUse.*Bash.*timeout=5
+the guard, before the command|PreToolUse.*Bash.*timeout=
 the redactor, on results it can rewrite|PostToolUse.*Bash.Read.Grep.*timeout=
 the notice, on the ones it cannot|PostToolUse.*Edit.Write.mcp__.*timeout=
 the failure warning|PostToolUseFailure.*Edit.Write.mcp__.*timeout=

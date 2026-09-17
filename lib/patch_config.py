@@ -73,10 +73,16 @@ STALE_TEMP_SECONDS = 60
 # redactor's throughput, and this number is what holds until that lands.
 REDACT_TIMEOUT = 60
 
-# The guard reads a command line, which is short whatever the command does:
-# 200 000 characters come back in 0.73 s. Five seconds is generous and has
-# never been the binding constraint.
-GUARD_TIMEOUT = 5
+# The guard reads a command line, and length is not what it costs: a 1 MB
+# single-token command comes back in 0.83 s. The cost is per SUB-COMMAND —
+# pass B and the credential pass fork sed and grep once per one, about 13 ms
+# each — and a heredoc contributes one sub-command per line of its body. At
+# five seconds the guard was killed at roughly 520 sub-commands, and a killed
+# PreToolUse hook does not deny: the command runs unguarded, silently.
+# Measured 2026-09-17, review-2026-09-17-secrets-guard.md item A1. Thirty
+# seconds moves that threshold to roughly 3100. It does not fix the shape;
+# A1 does.
+GUARD_TIMEOUT = 30
 
 # How many timestamped backups of one configuration file to keep. Every changing
 # run writes one and nothing ever removed them: 21 copies of settings.json were

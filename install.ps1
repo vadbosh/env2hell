@@ -117,6 +117,9 @@ $DumpRules = [ordered]@{
 }
 # See lib/patch_config.py (REDACT_TIMEOUT) for why this is 60 and not 10.
 $RedactTimeout = 60
+# See lib/patch_config.py (GUARD_TIMEOUT) for why this is 30 and not 5: the
+# guard costs per sub-command, and a killed PreToolUse hook does not deny.
+$GuardTimeout = 30
 
 # The same three matchers lib/patch_config.py writes, named here for the same
 # reason: three functions below have to agree with it and with each other, and
@@ -205,11 +208,11 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
     }
     if ($already) {
         $fixed = 0
-        foreach ($e in $already) { $fixed += Update-Timeout $e 'secrets-guard' 5 }
+        foreach ($e in $already) { $fixed += Update-Timeout $e 'secrets-guard' $GuardTimeout }
         if ($fixed -eq 0) { Say '    = already wired'; return }
         Write-Json $Path $data
-        Say $(if ($DryRun) { '    would set the guard timeout to 5' }
-              else         { '    guard timeout set to 5' })
+        Say $(if ($DryRun) { "    would set the guard timeout to $GuardTimeout" }
+              else         { "    guard timeout set to $GuardTimeout" })
         return
     }
 
@@ -219,7 +222,7 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
             type          = 'command'
             shell         = 'powershell'
             command       = "& `"$GuardPath`""
-            timeout       = 5
+            timeout       = $GuardTimeout
             statusMessage = 'secrets-guard...'
         })
     }
