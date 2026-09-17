@@ -35,9 +35,65 @@ done
 [ -e "$TOOL" ] || { echo "secrets-redact not found: $TOOL" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "these tests need jq" >&2; exit 2; }
 
+# ── one pwsh process for the whole run ──────────────────────────────────────
+# `pwsh -File` costs about a second of startup and the tool is called two dozen
+# times, so the port's run was 72 seconds of starting PowerShell. The server
+# takes {args, stdin} as one JSON line and answers {rc, out}; the cases are
+# unchanged.
+#
+# Not used when NO_SERVER is set: two cases set TMPDIR per call and one of them
+# backgrounds the tool in order to kill it, and a shared server can do neither.
+# Two FIFOs and not `coproc`: run_tool is always the middle of a pipeline, a
+# pipeline element runs in a subshell, and a coproc's file descriptors are not
+# inherited by subshells. Descriptors opened with `exec` are. The symptom was
+# every case reporting "the hook issued no replacement at all" in two seconds —
+# fast, green-looking plumbing, and no tool ever ran.
+srv_dir=""
+SERVER=""
+if [ "$PORT" = pwsh ] && [ -e "$SRC/tests/pwsh_serve_filter.ps1" ]; then
+    srv_dir="$(mktemp -d)"
+    mkfifo "$srv_dir/req" "$srv_dir/rep"
+    pwsh -NoProfile -File "$SRC/tests/pwsh_serve_filter.ps1" "$TOOL" \
+        < "$srv_dir/req" > "$srv_dir/rep" 2>/dev/null &
+    srv_pid=$!
+    exec {REQ}>"$srv_dir/req"
+    exec {REP}<"$srv_dir/rep"
+    SERVER=1
+fi
+close_server () {
+    [ -n "$SERVER" ] || return 0
+    exec {REQ}>&-
+    wait "$srv_pid" 2>/dev/null
+    exec {REP}<&-
+    rm -rf "${srv_dir:?}"
+    SERVER=""
+}
+trap close_server EXIT
+
 # $RUNNER is a command plus its flags and has to split into words.
 # shellcheck disable=SC2086
-run_tool () { $RUNNER "$TOOL" "$@"; }
+run_tool () {
+    if [ -z "$SERVER" ] || [ -n "${NO_SERVER:-}" ]; then
+        $RUNNER "$TOOL" "$@"
+        return $?
+    fi
+    # The argument array is built by hand rather than with `jq --args`, which
+    # still parses a leading `-` as one of its own options and rejects
+    # `--filter`. Every argument this tool takes is a flag of letters and
+    # hyphens, so quoting them needs nothing cleverer.
+    local argv="[" first=1 x sjson reply
+    for x in "$@"; do
+        [ "$first" = 1 ] || argv="$argv,"
+        argv="$argv\"$x\""
+        first=0
+    done
+    argv="$argv]"
+    sjson="$(jq -Rs .)"             # stdin, JSON-encoded, newlines and all
+    printf '{"args":%s,"stdin":%s}\n' "$argv" "$sjson" >&"$REQ"
+    IFS= read -r reply <&"$REP"
+    printf '%s' "$reply" | jq -j '.out'
+    return "$(printf '%s' "$reply" | jq -r '.rc')"
+}
 
 pass=0
 fail=0
@@ -272,7 +328,7 @@ json.dump({"tool_name": "Bash",
           open(sys.argv[1], "w"))
 PY
 
-    TMPDIR="$scratch_home" run_tool < "$big" >/dev/null 2>&1 &
+    NO_SERVER=1 TMPDIR="$scratch_home" run_tool < "$big" >/dev/null 2>&1 &
     redact_pid=$!
     sleep 1
     kill -9 "$redact_pid" 2>/dev/null
@@ -296,7 +352,7 @@ PY
     # to belong to a run happening right now.
     find "$scratch_home/secrets-redact" -maxdepth 1 -mindepth 1 -name 'run.*' -type d \
          -exec touch -t 200001010000 {} + 2>/dev/null
-    printf 'x --pass %s\n' "$HEX" | TMPDIR="$scratch_home" run_tool --filter >/dev/null 2>&1
+    printf 'x --pass %s\n' "$HEX" | NO_SERVER=1 TMPDIR="$scratch_home" run_tool --filter >/dev/null 2>&1
     after="$(runs)"
 
     if [ "$left" -ge 1 ] && [ "$after" -eq 0 ]; then
