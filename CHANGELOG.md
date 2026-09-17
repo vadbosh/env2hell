@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.1 — 2026-09-17
+
+### Fixed
+
+- **`release.sh check` watches the installed commands without being asked.**
+  `ENV2HELL_MIRRORS` was the only source of copies to compare, so an unset
+  variable meant the commands `install.sh` actually put on this machine went
+  unwatched — and `check` said "none configured", which reads as nothing to
+  report rather than as nothing looked at.
+
+  Found the way these things are found: at 0.6.0's release the installed guard
+  was one commit behind and did not have the sub-command limit, while the check
+  reported everything in agreement. The three shipped commands in
+  `${ENV2HELL_BIN_DIR:-$HOME/.local/bin}` are compared now whether or not
+  anything is set; `install.sh` derives that directory the same way.
+  `ENV2HELL_MIRRORS` keeps its job — copies only the machine knows about, such
+  as the rule file as a config canon redistributes it, or a second checkout.
+
 ## 0.6.0 — 2026-09-17
 
 Four cold reviews — `bin/secrets-guard`, `bin/safe-env` and a parity pass over
