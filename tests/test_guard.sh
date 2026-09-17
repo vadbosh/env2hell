@@ -174,6 +174,36 @@ check 0 "printf '%s\n' 'password=\${db_password}'"
 check 2 'echo "${db_password}"'
 
 echo
+echo "allowed — a credential name has to be a whole component, not a substring"
+# A6 of review-2026-09-17-secrets-guard.md. The first line below is this file's
+# own summary line: matched as a substring, PASS denied the test harness
+# reporting its results. PASS needs a neighbouring component to count, because
+# on its own the word is a counter as often as a credential.
+check 0 'printf "\npassed %d, failed %d\n" "$pass" "$fail"'
+check 0 'echo "$passed of $total"'
+check 0 'echo "$bypass_cache"'
+check 0 'echo "$compass_dir"'
+check 0 'echo "$PASSENGER_ROOT"'
+check 0 'echo "$pass"'
+check 2 'echo "$DB_PASS"'
+check 2 'echo "$PASS_FILE"'
+check 2 'echo "$password"'
+
+echo
+echo "allowed — .env templates hold no values and are read all the time"
+# A7 of the same review. `.env.production` must stay denied: the exemption is
+# the well-known template suffixes and nothing wider.
+check 0 'cat .env.example'
+check 0 'head -1 .env.sample'
+check 0 'cat .env.template'
+check 0 'cat .env.dist'
+check 0 'cat .env.defaults'
+check 2 'cat .env.production'
+check 2 'cat .env'
+# both in one sub-command: the real one still trips it
+check 2 'cat .env.example .env'
+
+echo
 echo "allowed — a credential handed to another command, not printed"
 # The value goes to curl inside a command substitution, and what the printing
 # command emits is curl's output. Denying this taught nothing and cost a

@@ -289,6 +289,14 @@ existing `check 0 'printenv PATH'`.
 
 ### A6. `$pass` and `$passed` are denied — including a line of this project's own test harness
 
+**CLOSED 2026-09-17.** `bash tests/test_guard.sh` and `--pwsh`, both
+`passed 93, failed 0`. The fix is not the one proposed below: a left boundary
+alone still denied `$PASSENGER_ROOT` and `$pass`, so the name is now matched as
+a whole underscore-separated component, and `PASS` additionally needs a
+neighbouring component. `DB_PASS` and `PASS_FILE` stay denied, `$pass` does not
+— a lone `pass` is a counter as often as a credential, and `PASSWORD`/`PASSWD`/
+`PASSPHRASE` carry the case where the name says it on its own.
+
 **Class:** damage — this is the class that gets a guard switched off, and with
 it everything the guard was giving.
 
@@ -318,6 +326,13 @@ how `bypass`/`compass`/`passed` are not. Keep the case-insensitive match:
 `"$bypass_cache"`, next to the existing `check 2 'echo "$db_password"'`.
 
 ### A7. `.env.example` and its siblings are denied
+
+**CLOSED 2026-09-17.** `bash tests/test_guard.sh` and `--pwsh`, both
+`passed 93, failed 0`. Implemented as proposed, by renaming the template names
+out of the text before the path is looked for rather than by widening the
+pattern — there is no negative lookahead in ERE, and the port matches
+case-insensitively, so the placeholder contains no `env` at all.
+`cat .env.production` and `cat .env.example .env` are still denied.
 
 **Class:** damage.
 

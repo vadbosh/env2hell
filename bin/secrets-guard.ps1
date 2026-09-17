@@ -148,12 +148,22 @@ foreach ($ch in $command.ToCharArray()) {
 }
 $rawSubs += $buf
 
+# `.env.example` and its siblings are the opposite of a secret store: they are
+# committed precisely because they hold no values, and reading one is the first
+# thing anybody does in an unfamiliar repository. The `.env` pattern ends in
+# `[.\s"']`, which is what makes `.env.production` match — and matched these
+# with it. There is no negative lookahead worth writing here, so the template
+# names are renamed out of the text before the path is looked for. The
+# replacement contains no `env`, because -match is case-insensitive.
+$envTemplates = '\.env\.(example|sample|template|dist|defaults)'
+
 foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
     # Same stripping as pass A: the reader must be a command, not a word inside
     # a quoted program.
     $subScan = $rawSub -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
-    if ($subScan -match $readers -and $rawSub -match $secrets) {
+    $pathScan = $rawSub -replace $envTemplates, '.TPLFILE'
+    if ($subScan -match $readers -and $pathScan -match $secrets) {
         Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
     }
 }
@@ -167,9 +177,22 @@ foreach ($rawSub in $rawSubs) {
 # token — a Huawei access key is 20 characters of uppercase and digits, its
 # secret 40 of base62, shapes indistinguishable from a git SHA. Shape cannot
 # decide it; the name can, and the name is visible here.
-$credName = '(PASS|PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY' +
+$credName = '(PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY' +
             '|AUTH_?TOKEN|ACCESS_?KEY|SECRET_?KEY|CLIENT_?SECRET' +
             '|PRIVATE_?KEY|CREDENTIAL)'
+
+# The name has to be a WHOLE component of the variable name, not a substring of
+# one. Matched as a substring it denied `$passed`, `$bypass_cache` and
+# `$PASSENGER_ROOT` — and `printf 'passed %d, failed %d\n' "$pass" "$fail"`,
+# which is this project's own test harness reporting its results.
+#
+# `PASS` needs a neighbour: `DB_PASS` is how half the compose files in existence
+# spell a password, but a lone `$pass` is a counter at least as often as a
+# credential. `PASSWORD`, `PASSWD` and `PASSPHRASE` say it on their own.
+$credBound = '([^A-Za-z0-9_]|$)'
+$credVar = '\$\{?([A-Za-z0-9]+_)*' + $credName + '(_[A-Za-z0-9]+)*' + $credBound +
+           '|\$\{?(([A-Za-z0-9]+_)+PASS(_[A-Za-z0-9]+)*' +
+           '|PASS(_[A-Za-z0-9]+)+)' + $credBound
 
 foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
@@ -199,13 +222,12 @@ foreach ($rawSub in $rawSubs) {
     $cmdSub = [regex]'\$\([^()]*\)'
     while ($sqStripped -match '\$\([^()]*\)') {
         $inner = [regex]::Match($sqStripped, '\$\(([^()]*)\)').Groups[1].Value
-        if ($inner -match '(^|\s)(echo|printf)(\s|$)' -and
-            $inner -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
+        if ($inner -match '(^|\s)(echo|printf)(\s|$)' -and $inner -match $credVar) {
             Deny '[secrets-guard] Blocked: printing a credential-named variable puts its value in the transcript unlabelled, where redaction cannot see it. Use `safe-env` and filter by name to check it is set without printing it.'
         }
         $sqStripped = $cmdSub.Replace($sqStripped, 'CMDSUB', 1)
     }
-    if ($sqStripped -match ('\$\{?[A-Za-z0-9_]*' + $credName + '[A-Za-z0-9_]*\}?')) {
+    if ($sqStripped -match $credVar) {
         Deny '[secrets-guard] Blocked: printing a credential-named variable puts its value in the transcript unlabelled, where redaction cannot see it. Use `safe-env` and filter by name to check it is set without printing it.'
     }
 }
