@@ -1,5 +1,123 @@
 # Changelog
 
+## 0.6.0 — 2026-09-17
+
+Four cold reviews — `bin/secrets-guard`, `bin/safe-env` and a parity pass over
+each PowerShell port — and every item they raised. The reviews are in the
+repository as `review-2026-09-17-*.md`; what follows is what changed for someone
+who uses this.
+
+The headline is not a pattern. **The guard was failing open**, and it was
+measured rather than guessed: past roughly 520 sub-commands it was killed by its
+own hook timeout, and a killed `PreToolUse` hook does not deny — the command
+runs and nothing anywhere says the check never happened. A command of 1208 bytes
+was enough. A heredoc writing a file of 550 lines is the ordinary way to reach
+that number.
+
+### Fixed
+
+- **The guard finishes.** Its two shell loops forked `sed` and `grep` once per
+  sub-command, about 13 ms each; they are one `awk` program now. Two thousand
+  sub-commands went from 26.6 s to 0.48 s, fifty thousand take 8.2 s. The hook
+  timeout went from 5 s to 30 s in the same change.
+
+- **And when it cannot finish, it denies.** Failing open is right for an
+  unexpected payload and stays; a command too large to check is not that. Past
+  50 000 sub-commands the guard refuses with a message naming the count, in
+  under a second. The limit is a count rather than a clock, so it answers the
+  same on every machine and needs no `timeout` binary.
+
+- **`safe-env` printed the body of a multi-line value.** A private key in an
+  environment variable came back as a masked header followed by its own base64,
+  and the number in `<REDACTED:31>` was the length of that header rather than of
+  the value. Values are read as NUL-separated pairs now, so a value containing a
+  newline is one record. The PowerShell port never had this; the fix is copied
+  from it.
+
+- **A credential name is a whole component, not a substring.** `PASS` matched
+  inside `BYPASS_CACHE`, `PASSENGER_ROOT` and `$passed` — so `printf 'passed %d,
+  failed %d\n' "$pass" "$fail"` was denied, which is this project's own test
+  harness reporting its results. `DB_PASS` and `PASS_FILE` are still denied;
+  `PASSWORD`, `PASSWD` and `PASSPHRASE` say it on their own.
+
+- **`.env.example` and its siblings are readable.** `.env.sample`,
+  `.env.template`, `.env.dist` and `.env.defaults` too. They are committed
+  precisely because they hold no values, and reading one is the first thing
+  anybody does in an unfamiliar repository. `.env.production` is still denied.
+
+- **A heredoc body is data, not a list of commands.** Writing a file whose text
+  mentions `env` or `cat .env` was denied, which is how this repository came to
+  document a workaround for its own guard. `<<<` is untouched.
+
+- **`sk-` needs a boundary.** Unanchored, it masked
+  `ANTHROPIC_MODEL=zai-sk-glm-4-6-turbo-preview` — the one variable the
+  documentation uses as its example of a value that prints. The boundary counts
+  `-` as part of a word, because a plain word boundary changes nothing here: the
+  character before `sk-` in that name is a hyphen.
+
+- **Standard base64 is masked.** `+`, `/` and `=` sit outside the alphabet every
+  generic fallback used, and any one of them broke a run long enough to match. A
+  32-byte secret in base64 is 44 characters and almost always carries one. A
+  path is excluded, because `/` is in that alphabet too.
+
+- **Windows: a newline separates sub-commands.** The port split on `;`, `&` and
+  `|` and nothing else, so `ls -la` followed by `env` on the next line printed
+  the environment there and was denied everywhere else — and, in the other
+  direction, a reader on one line with a secret path on another counted as one
+  sub-command, which denied ordinary two-line commands.
+
+### Added
+
+- **Fourteen more credential stores are denied**: `gh/hosts.yml`,
+  `.terraformrc`, `credentials.tfrc.json`, the three gcloud files,
+  `.cargo/credentials`, `.gem/credentials`, `.m2/settings.xml` and
+  `settings-security.xml`, `rclone.conf`, `.vault-token`, `.databrickscfg`,
+  `.snowflake/config`, `containers/auth.json`, `helm/registry/config.json` —
+  and `*.key`. `gh/hosts.yml` is the sharp one: `gh` keeps a token there in
+  plain text.
+
+- **`/proc/self/environ`** and `/proc/thread-self/environ`, which are not
+  digits and were not matched.
+
+- **A dump reached through something that runs commands.** `bash -c env`,
+  `eval env`, `$(env)` and the environment-dumping idiom of Python, Node, Perl
+  and Ruby. The payload has to *be* the dump command, so `bash -c "echo env"`
+  and `sh -c "set -e; make"` keep working.
+
+- **`FOO=bar env`, `\env` and `/usr/bin/env`.** A leading assignment, an escaped
+  name or a directory used to make the guard skip the whole sub-command rather
+  than that one token.
+
+- **`printenv -0`** and `--null`, which change the separator and not the scope.
+
+- **A here-string prints its text**, so `cat <<< "$GITHUB_TOKEN"` is denied
+  while `grep foo <<< "$line"` is not.
+
+### Changed
+
+- **One policy, asked of every implementation.** The list of credential stores
+  lived in four files and disagreed: `cat server.key` was denied in Opencode and
+  allowed in Claude Code and Codex, on the same machine, with nothing saying so.
+  The credential-name list lived in four more. `tests/test_policy.sh` asks all
+  of them the same questions — regular expressions and globs cannot be diffed as
+  text, but they can be asked.
+
+- **Two absences are decisions with tests behind them.** `~/.ssh/config` stays
+  readable: it holds hostnames and `IdentityFile` paths, not keys. `_FILE` and
+  `_PATH` suffixes stay unexempt: the guard has only the name, and exempting
+  them would trade a visible false denial for a silent miss.
+
+- **`*credentials*` and `*secrets*` are enforced by Opencode alone**, where they
+  ask rather than refuse. As a hard deny in the hooks they would block
+  `cat credentials-design.md`.
+
+- **The tests know their own constants.** The rule count and the hook timeouts
+  are read from `lib/patch_config.py` rather than written out, after four
+  assertions failed for the only reason a test must never fail. The PowerShell
+  suites run against one `pwsh` process instead of one per case: the guard's
+  suite went from 115 s to 11 s, the redactor's from 72 s to 6 s, the new parity
+  run from 380 s to 53 s.
+
 ## 0.5.3 — 2026-09-16
 
 Three cold reviews — `lib/patch_config.py`, `bin/secrets-redact` and its
