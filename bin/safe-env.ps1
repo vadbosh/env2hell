@@ -48,6 +48,14 @@ $fallbacks = @(
     '^[A-Za-z0-9_-]{40,}$'                              # long opaque run
 )
 
+# Standard base64 — the commonest encoding for a random secret, and the one
+# shape the list above could not take: `+`, `/` and `=` are outside
+# [A-Za-z0-9_-], so any one of them broke every run long enough to match.
+# A path is the false positive to avoid, because `/` is in the alphabet, so a
+# value starting with `/`, `~`, `.` or a drive letter is excluded.
+$base64  = '^[A-Za-z0-9+/=]{40,}$'
+$notPath = '^([\\/~.]|[A-Za-z]:[\\/])'
+
 function Test-Secret([string]$Value) {
     foreach ($p in $patterns)  { if ($Value -match $p) { return $true } }
     if ($Value -match $sqlPassword) { return $true }
@@ -56,6 +64,7 @@ function Test-Secret([string]$Value) {
     if ($Value -match '[A-Za-z0-9_-]{40,}' -and $Value -match '[A-Za-z0-9_-]\.[A-Za-z0-9_-]') {
         return $true
     }
+    if ($Value -match $base64 -and $Value -notmatch $notPath) { return $true }
     return $false
 }
 
@@ -64,12 +73,22 @@ function Test-Secret([string]$Value) {
 # build id or a short hash — so no pattern can take it without masking half an
 # ordinary environment. A path stays visible because it is configuration, so
 # does a flag, and nothing under eight characters is worth hiding.
-$credName = '(PASS|PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY' +
+$credName = '(PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY' +
             '|AUTH_?TOKEN|ACCESS_?KEY|SECRET_?KEY|CLIENT_?SECRET' +
             '|PRIVATE_?KEY|CREDENTIAL)'
 
+# The name has to be a WHOLE underscore-separated component, not a substring of
+# one. Matched as a substring, PASS masked BYPASS_CACHE and PASSENGER_ROOT —
+# configuration silently deleted from the output. PASS needs a neighbour:
+# DB_PASS is a password, a lone PASS is as likely to be a counter. PASSWORD,
+# PASSWD and PASSPHRASE say it on their own. bin/secrets-guard.ps1 carries the
+# same list; tests/test_policy.sh asks both the same names.
+$credVar = '^([A-Za-z0-9]+_)*' + $credName + '(_[A-Za-z0-9]+)*$' +
+           '|^(([A-Za-z0-9]+_)+PASS(_[A-Za-z0-9]+)*' +
+           '|PASS(_[A-Za-z0-9]+)+)$'
+
 function Test-NamedCredential([string]$Name, [string]$Value) {
-    if ($Name.ToUpper() -notmatch $credName)          { return $false }
+    if ($Name.ToUpper() -notmatch $credVar)           { return $false }
     if ($Value.Length -lt 8)                          { return $false }
     if ($Value -match '^[~.]?[\\/]')                  { return $false }
     if ($Value -match '^[A-Za-z]:[\\/]')              { return $false }

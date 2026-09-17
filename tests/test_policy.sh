@@ -175,5 +175,124 @@ while IFS=$'\t' read -r status label; do
     fi
 done < "$tmp/patch.out"
 
+# ── the other list that lives in four places: credential NAMES ──────────────
+# CRED_VAR in bin/secrets-guard, $credVar in its port, CRED in bin/safe-env and
+# $credVar in its port. The guard denies printing such a variable; safe-env
+# masks its value. Different acts, one list — and it had the same defect in all
+# four at once, because PASS was matched as a substring: $passed, $bypass_cache
+# and PASSENGER_ROOT were all treated as credentials.
+#
+# `mask` means safe-env must hide the value and the guard must deny `echo`;
+# `show` means neither.
+cat > "$tmp/names.txt" <<'NAMES'
+mask DB_PASSWORD
+mask db_password
+mask MY_PASSWORD
+mask DB_PASS
+mask PASS_FILE
+mask GITHUB_TOKEN
+mask JIRA_API_TOKEN
+mask AWS_SECRET_ACCESS_KEY
+mask HW_SECRET_KEY
+mask CLIENT_SECRET
+mask MY_CREDENTIAL
+show PASS
+show PASSED
+show BYPASS_CACHE
+show COMPASS_DIR
+show PASSENGER_ROOT
+show TOKENIZERS_PARALLELISM
+show HOME_DIR
+show ANTHROPIC_MODEL
+NAMES
+
+# One value for every name: long enough to clear the eight-character floor,
+# shapeless enough that only the name can decide it. Invented.
+NAME_VALUE='correct-horse-battery'
+
+# The guard: `echo "$NAME"` — denied for a credential name, allowed otherwise.
+labels=(); wants=()
+: > "$tmp/name-payloads.txt"
+while read -r verb name; do
+    [ -z "${verb:-}" ] && continue
+    labels+=("$verb \$$name")
+    if [ "$verb" = mask ]; then wants+=(2); else wants+=(0); fi
+    # shellcheck disable=SC2016
+    printf 'echo "$%s"' "$name" | python3 -c \
+        'import json,sys; print(json.dumps({"tool_input":{"command":sys.stdin.read()}}))' \
+        >> "$tmp/name-payloads.txt"
+done < "$tmp/names.txt"
+
+posix_rc=()
+while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    printf '%s' "$p" | "$GUARD" >/dev/null 2>&1
+    posix_rc+=($?)
+done < "$tmp/name-payloads.txt"
+port_rc=()
+if [ "$have_pwsh" = 1 ]; then
+    mapfile -t port_rc < <(pwsh -NoProfile -File "$BATCH" "$PORT" "$tmp/name-payloads.txt" 2>/dev/null)
+fi
+
+for i in "${!labels[@]}"; do
+    want="${wants[$i]}"
+    got="${posix_rc[$i]:-<none>}"
+    if [ "$got" = "$want" ]; then
+        ok "posix guard: ${labels[$i]}"
+    else
+        no "posix guard: ${labels[$i]}" "exit=$got, wanted $want"
+    fi
+    if [ "$have_pwsh" = 1 ]; then
+        got="${port_rc[$i]:-<none>}"
+        if [ "$got" = "$want" ]; then
+            ok "port: ${labels[$i]}"
+        else
+            no "port: ${labels[$i]}" "exit=$got, wanted $want"
+        fi
+    fi
+done
+
+# safe-env: the same names, one process per implementation.
+SAFE="$SRC/bin/safe-env"
+SAFE_PORT="$SRC/bin/safe-env.ps1"
+env_args=()
+while read -r _verb name; do
+    [ -z "${name:-}" ] && continue
+    env_args+=("$name=$NAME_VALUE")
+done < "$tmp/names.txt"
+env -i "${env_args[@]}" "$SAFE" 2>/dev/null | sort > "$tmp/safe-posix.txt"
+
+if [ "$have_pwsh" = 1 ]; then
+    {
+        echo '$ErrorActionPreference = "Stop"'
+        while read -r _verb name; do
+            [ -z "${name:-}" ] && continue
+            printf '$env:%s = %s\n' "$name" "'$NAME_VALUE'"
+        done < "$tmp/names.txt"
+        printf '& "%s"\n' "$SAFE_PORT"
+    } > "$tmp/safe-driver.ps1"
+    pwsh -NoProfile -File "$tmp/safe-driver.ps1" 2>/dev/null | sort > "$tmp/safe-port.txt"
+fi
+
+while read -r verb name; do
+    [ -z "${verb:-}" ] && continue
+    for impl in posix port; do
+        [ "$impl" = port ] && [ "$have_pwsh" != 1 ] && continue
+        out="$tmp/safe-$impl.txt"
+        line="$(grep "^$name=" "$out" || true)"
+        masked=no
+        case "$line" in *"<REDACTED:"*) masked=yes ;; esac
+        wantm=no
+        [ "$verb" = mask ] && wantm=yes
+        if [ -z "$line" ]; then
+            no "safe-env $impl: $verb $name" "no line at all"
+        elif [ "$masked" = "$wantm" ]; then
+            ok "safe-env $impl: $verb $name"
+        else
+            no "safe-env $impl: $verb $name" "masked=$masked, wanted $wantm"
+        fi
+    done
+done < "$tmp/names.txt"
+
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

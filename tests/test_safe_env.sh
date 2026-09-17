@@ -127,6 +127,28 @@ else
     no "leaves a path alone — configuration, not a secret" "the path was masked"
 fi
 
+# Standard base64 is the commonest encoding for a random secret and the one
+# shape none of the generic fallbacks could take: `+`, `/` and `=` sit outside
+# [A-Za-z0-9_-], so any one of them broke every run long enough to match.
+# review-2026-09-17-safe-env.md item A2. All values invented.
+b64="$(MYTEST_B64PLUS='QWxhZGRpbjpvcGVuIHNlc2FtZQ+abcdefghij/klmnopqrst=' \
+       MYTEST_B64PAD='QWxhZGRpbjpvcGVuc2VzYW1lMTIzNDU2Nzg5MGFiY2RlZg==' \
+       MYTEST_ABSPATH='/usr/local/share/very/long/directory/path/name/here' \
+       run_tool 2>/dev/null)"
+for name in MYTEST_B64PLUS MYTEST_B64PAD; do
+    if grep -q "^$name=<REDACTED:" <<< "$b64"; then
+        ok "masks base64 that carries + / or ="
+    else
+        no "masks base64 that carries + / or =" "$name reached the output"
+    fi
+done
+# `/` is in the base64 alphabet, so a long path is the false positive to avoid.
+if grep -qx 'MYTEST_ABSPATH=/usr/local/share/very/long/directory/path/name/here' <<< "$b64"; then
+    ok "leaves a long absolute path alone"
+else
+    no "leaves a long absolute path alone" "it was masked"
+fi
+
 # A Windows path is configuration too, and a Git Bash or WSL shell is handed one
 # routinely. The port excluded these and the POSIX side did not — found by
 # tests/test_parity_safe_env.sh, review-2026-09-17-safe-env-ps1.md item A1.

@@ -143,6 +143,16 @@ full value's length, not the first line's.
 
 ### A2. A base64 value is not masked: the fallbacks exclude `+`, `/` and `=`
 
+**CLOSED 2026-09-17.** `bash tests/test_safe_env.sh` and `--pwsh`, both
+`passed 18, failed 0`. A fifth fallback, `^[A-Za-z0-9+/=]{40,}$`, with values
+starting `/`, `~`, `.` or a drive letter excluded — `/` is in that alphabet, so
+a long absolute path is letters, digits and slashes and nothing else. The
+residue is a relative path over forty characters with no leading dot, which is
+rarer than the secret this catches; it is named in the comment rather than
+left to be rediscovered. Closes B1 with it: the table in
+`docs/patterns.en.md` / `docs/patterns.ru.md` now spells out every alphabet and
+carries the base64 row.
+
 **Class:** silent wrong result.
 
 **Where:** all four generic fallbacks use `[A-Za-z0-9_-]` or `[A-Fa-f0-9]`.
@@ -182,6 +192,16 @@ PATH so the new rule is shown not to eat it.
 
 ### A3. Any variable whose name merely contains `pass` is masked
 
+**CLOSED 2026-09-17.** Same commands, plus `bash tests/test_policy.sh` →
+`passed 178, failed 0`. The name is matched as a whole underscore-separated
+component now, and `PASS` needs a neighbour — identical to the fix in
+`bin/secrets-guard`, because it was the same list with the same defect.
+
+The list lived in four files and nothing compared them, which is what D asked
+for: `tests/test_policy.sh` gained a second section that asks all four the same
+names — the two guards by whether `echo "$NAME"` is denied, the two maskers by
+whether the value comes back `<REDACTED:…>`.
+
 **Class:** damage — the tool's whole purpose is that the non-secret part of the
 output stays readable, and this silently deletes ordinary configuration.
 
@@ -209,6 +229,11 @@ the three copies — see D.
 `PASSENGER_ROOT`, beside the existing masked `MYTEST_JIRA_API_TOKEN`.
 
 ### A4. `sk-` matches inside an ordinary value, so a model name is masked
+
+**OPEN.** Untouched: the `RE` lines are diffed character for character against
+`bin/secrets-redact` by `tests/test_redact.sh`, so anchoring the OpenAI
+alternative has to land in four files at once and the redactor has no `NAME=`
+frame to anchor against. It needs its own decision, not a quick edit.
 
 **Class:** damage.
 

@@ -41,8 +41,18 @@ caught by shape:
 |---|---|
 | 32 or more hex characters | hash-like keys with no prefix |
 | 20+ alphanumerics, a dot, 8+ more | `key.signature` tokens |
-| 40 or more opaque characters | long random strings |
+| 40 or more of `A-Za-z0-9_-` | long random strings |
 | a 40+ run containing a dot | compound tokens |
+| 40 or more of `A-Za-z0-9+/=`, unless the value reads as a path | standard base64 |
+
+The alphabets are spelled out because they are the whole point. The last row
+was added on 2026-09-17 for the same reason the `key.signature` row was: a
+32-byte secret encoded as standard base64 is 44 characters and, with
+probability near one, carries a `+`, a `/` or an `=` — and any one of them
+broke every run long enough to trigger the rows above it. `/` is in that
+alphabet too, so a value starting with `/`, `~`, `.` or a drive letter is
+excluded: a long enough absolute path is letters, digits and slashes and
+nothing else.
 
 The third row exists because of a real miss. A token of the form
 
@@ -147,7 +157,7 @@ ordinary work for nothing. And `.env.example`, `.env.sample`, `.env.template`,
 `.env.dist` and `.env.defaults` are exempt from the `.env` rule — they are
 committed precisely because they hold no values, and reading one is the first
 thing anybody does in an unfamiliar repository. Both are pinned by
-`tests/test_policy.sh`, which asks all three implementations the same question,
+`tests/test_policy.sh`, which asks all four implementations the same question,
 so neither can be added back by tidiness.
 
 Reading one of these with `cat`, `head`, `tail`, `less`, `strings`, or with

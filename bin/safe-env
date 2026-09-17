@@ -56,16 +56,41 @@ BEGIN {
   # Atlassian API token is 24 characters of letters and digits — the same shape
   # as a build id, a short hash or a bucket name — so no pattern above can take
   # it without masking half of an ordinary environment. The name can.
-  CRED = "(PASS|PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY"
+  CRED = "(PASSWD|PASSWORD|PASSPHRASE|TOKEN|SECRET|API_?KEY|APIKEY"
   CRED = CRED "|AUTH_?TOKEN|ACCESS_?KEY|SECRET_?KEY|CLIENT_?SECRET"
   CRED = CRED "|PRIVATE_?KEY|CREDENTIAL)"
+
+  # The name has to be a WHOLE underscore-separated component, not a substring
+  # of one. Matched as a substring, PASS masked BYPASS_CACHE and PASSENGER_ROOT
+  # — configuration silently deleted from the output, which is the failure that
+  # gets a tool switched off. bin/secrets-guard carries the same list and had
+  # the same defect; tests/test_policy.sh asks both the same names.
+  #
+  # PASS needs a neighbour: DB_PASS is how half the compose files in existence
+  # spell a password, but a lone PASS is as likely to be a counter. PASSWORD,
+  # PASSWD and PASSPHRASE say it on their own.
+  CRED_VAR = "^([A-Za-z0-9]+_)*" CRED "(_[A-Za-z0-9]+)*$"
+  CRED_VAR = CRED_VAR "|^(([A-Za-z0-9]+_)+PASS(_[A-Za-z0-9]+)*"
+  CRED_VAR = CRED_VAR "|PASS(_[A-Za-z0-9]+)+)$"
+
+  # Standard base64 — the commonest encoding for a random secret, and the one
+  # shape none of the fallbacks below could take: `+`, `/` and `=` are outside
+  # [A-Za-z0-9_-], so any one of them broke every run long enough to match. The
+  # same mechanism as the key.signature miss in docs/patterns.md.
+  #
+  # A path is the false positive to avoid, because `/` is in the alphabet: a
+  # long enough one is letters, digits and slashes and nothing else. Values
+  # starting with `/`, `~` or `.` are excluded for that reason — a relative
+  # path with no leading dot and over forty characters is the residue, and it
+  # is rarer than the secret this catches.
+  B64 = "^[A-Za-z0-9+/=]{40,}$"
 }
 # A credential-named variable whose value could be one. Three things keep this
 # from masking half the environment: a path is configuration, not a secret; so
 # is a flag; and nothing shorter than eight characters is worth hiding, which
 # is what keeps TOKENIZERS_PARALLELISM=false readable.
 function named_credential(key, val) {
-  if (toupper(key) !~ CRED)                     return 0
+  if (toupper(key) !~ CRED_VAR)                 return 0
   if (length(val) < 8)                          return 0
   if (val ~ /^[~.]?[\/\\]/)                     return 0     # /path, ./path, ~/path, and the backslash spellings
   if (val ~ /^[A-Za-z]:[\/\\]/)                 return 0     # C:/path, C:\path — Git Bash and WSL are handed these
@@ -91,6 +116,7 @@ function named_credential(key, val) {
   if (val ~ /^[A-Za-z0-9]{20,}\.[A-Za-z0-9_-]{8,}$/)                      { print key "=" mask(val); next }
   if (val ~ /[A-Za-z0-9_-]{40,}/ && val ~ /[A-Za-z0-9_-]\.[A-Za-z0-9_-]/)  { print key "=" mask(val); next }
   if (val ~ /^[A-Za-z0-9_-]{40,}$/)                                       { print key "=" mask(val); next }
+  if (val ~ B64 && val !~ /^[\/~.]/)                                      { print key "=" mask(val); next }
   # last, so a shape match still wins and the name only decides the leftovers
   if (named_credential(key, val))                                         { print key "=" mask(val); next }
   print key "=" val

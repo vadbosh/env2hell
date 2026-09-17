@@ -27,6 +27,29 @@ done
 
 [ -e "$GUARD" ] || { echo "guard not found: $GUARD" >&2; exit 2; }
 
+# ── one pwsh process for the whole run ──────────────────────────────────────
+# `pwsh -File` costs about a second of startup, and this file has a hundred
+# cases, so the port's run took nearly two minutes of starting PowerShell. The
+# server reads one payload per line and answers with one exit code; the cases
+# and their reporting are unchanged.
+#
+# Not used when CHECK_TIMEOUT is set: a timeout has to be able to kill the run
+# it is timing, and killing a shared server would take the rest of the suite
+# with it. Those cases keep the per-process path, which is what they are
+# measuring anyway.
+SERVER=""
+if [ -n "$RUNNER" ] && [ -e "$SRC/tests/pwsh_serve.ps1" ]; then
+    coproc PW { pwsh -NoProfile -File "$SRC/tests/pwsh_serve.ps1" "$GUARD" 2>/dev/null; }
+    SERVER=1
+fi
+close_server () {
+    [ -n "$SERVER" ] || return 0
+    exec {PW[1]}>&-
+    wait "$PW_PID" 2>/dev/null
+    SERVER=""
+}
+trap close_server EXIT
+
 pass=0
 fail=0
 
@@ -48,12 +71,16 @@ check() {
     # $RUNNER is a command plus its flags and has to split into words; so does
     # the optional timeout prefix.
     # shellcheck disable=SC2086
-    if [ -n "$RUNNER" ]; then
+    if [ -n "$SERVER" ] && [ -z "$CHECK_TIMEOUT" ]; then
+        printf '%s\n' "$payload" >&"${PW[1]}"
+        read -r got <&"${PW[0]}"
+    elif [ -n "$RUNNER" ]; then
         printf '%s' "$payload" | ${CHECK_TIMEOUT:+timeout $CHECK_TIMEOUT} $RUNNER "$GUARD" >/dev/null 2>&1
+        got=$?
     else
         printf '%s' "$payload" | ${CHECK_TIMEOUT:+timeout $CHECK_TIMEOUT} "$GUARD" >/dev/null 2>&1
+        got=$?
     fi
-    got=$?
     if [ "$got" = "$want" ]; then
         pass=$((pass + 1))
         printf '  ok    %-52s exit=%s\n' "$label" "$got"
