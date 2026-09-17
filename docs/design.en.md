@@ -304,3 +304,10 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
 - **Only `echo`, `printf`, `cat` and `tee` count as printing a
   credential-named variable.** `awk -v k="$API_KEY" …` hands the value to a
   program, and what that program does with it is not decidable here.
+- **`_FILE` and `_PATH` suffixes are not exempt, and that is a decision.**
+  `echo "$API_KEY_FILE"` is denied even though the Docker and systemd
+  convention is that such a variable holds the path to a secret rather than the
+  secret. The guard has only the name: `safe-env` can look at the value and let
+  a path through, and the guard cannot. Exempting the suffix would trade one
+  visible false denial for a silent miss whenever `$TOKEN_PATH` does hold a
+  token, and this project's own rule file says the name is what decides.

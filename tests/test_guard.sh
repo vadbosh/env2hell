@@ -349,6 +349,10 @@ echo "size — the guard has to finish inside its own hook timeout"
 CHECK_TIMEOUT=10
 big_sep="$(printf ':;%.0s' $(seq 1 2000))cat .env"
 check 2 "$big_sep" '2000 sub-commands, then a read'
+# D1: past the count it can finish, the guard denies rather than being killed
+# and letting the command through. The message differs, the exit code does not.
+huge="$(printf ':;%.0s' $(seq 1 60000))ls"
+check 2 "$huge" '60 000 sub-commands — too large to check'
 # $( ) strips trailing newlines, so the last line is joined to what follows
 # unless one is put back explicitly.
 big_lines="$(printf 'echo line %s\n' $(seq 1 2000))"$'\n'"cat .env"

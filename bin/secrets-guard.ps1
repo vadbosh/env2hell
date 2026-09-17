@@ -71,6 +71,22 @@ foreach ($line in ($command -split '\r?\n')) {
 $command = $kept -join "`n"
 if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
 
+# ---------- too large to check ----------
+# Failing open is the right answer to an unexpected payload — that contract
+# stays. A command too big to finish is not an unexpected payload: it is the
+# guard not doing its job, and a PreToolUse hook killed at the runner's timeout
+# does not deny. The limit is a count rather than a clock, so it answers the
+# same on every machine and needs nothing that has to be installed.
+# review-2026-09-17-secrets-guard.md item D1.
+$GuardMaxSubs = 50000
+$subCount = 0
+foreach ($line in ($command -split '\r?\n')) {
+    $subCount += 1 + ([regex]::Matches($line, '[;&|]')).Count
+}
+if ($subCount -gt $GuardMaxSubs) {
+    Deny "[secrets-guard] Blocked: $subCount sub-commands is more than this guard can check ($GuardMaxSubs), so the command was never checked. Split it, or write the file with an editor instead of a heredoc."
+}
+
 # ---------- pass A: dump commands, on quote-stripped text ----------
 $scan = $command -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
 

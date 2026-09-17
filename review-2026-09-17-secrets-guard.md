@@ -734,16 +734,34 @@ What is right and must stay:
 
 What is arguable:
 
-- **Failing open on *timeout* is not the same decision as failing open on a
-  missing `jq`.** The documented rationale is "do not break the assistant when
+- ~~**Failing open on *timeout* is not the same decision as failing open on a
+  missing `jq`.**~~ **DECIDED 2026-09-17: change it.** Revisited with the
+  numbers A1 asked for. Total guard time, this machine: 20 000 sub-commands
+  3.6 s, 50 000 8.4 s, 100 000 16.5 s — and only 12 of those 16.5 are the awk
+  program, so a limit on that pass alone never fires before the runner kills
+  the script. A clock was the wrong instrument twice over: it also needs
+  `timeout`, which macOS does not ship. The limit is a **count** — 50 000
+  sub-commands, one cheap pass to measure, the same answer on every machine,
+  and room for a box three times slower than this one. Over it, the guard
+  denies with a message naming the count. `tests/test_guard.sh` has a case at
+  60 000; it denies in 0.6 s, where 40 000 is checked normally in 6.2 s.
+
+  Original reasoning, kept because it is what the decision rests on: The documented rationale is "do not break the assistant when
   something unexpected arrives". A timeout is not an unexpected payload; it is
   the guard saying it did not finish. A hook that exits 2 with "guard timed out,
   re-run with fewer sub-commands" costs one denied call and never lets a dump
   through. Recommendation: **not now** — it needs a measured worst case first,
   and after A1 the worst case changes by an order of magnitude. Revisit once A1
   has landed and the 13 ms is a fraction of itself.
-- **Credential names are matched as substrings, in any case, with no regard for
-  suffix conventions.** A6 is the sharp end of it, but the same looseness denies
+- ~~**Credential names are matched as substrings, in any case, with no regard
+  for suffix conventions.**~~ **DECIDED 2026-09-17: leave the suffixes alone.**
+  The boundary half landed as A6. The `_FILE`/`_PATH` exemption is refused and
+  written into `docs/design.*.md` so it is not reopened by whoever meets
+  `echo "$API_KEY_FILE"` next: the guard has only the name, `safe-env` has the
+  value and already lets a path through, and exempting the suffix trades a
+  visible false denial for a silent miss.
+
+  Original reasoning: A6 is the sharp end of it, but the same looseness denies
   `echo "$API_KEY_FILE"`, `echo "$TOKEN_PATH"` and `echo "$SECRET_NAME is not
   set"` — all reproduced, all `BLOCK`. `NAME_FILE` is the Docker and systemd
   convention for "the path to the secret, not the secret". Recommendation: fix
@@ -751,10 +769,17 @@ What is arguable:
   separate decision — it trades a real false positive for a real miss
   (`$TOKEN_PATH` genuinely holding a token), and the project's own rule file
   argues that the name is the only thing that can decide.
-- **One policy, three implementations** (bash, PowerShell, Python), with a
-  parity test for the redactor and none for the guard. A9 proposes the test.
-  Worth noting that the redactor's parity check found three defects in one day
-  that one-sided tests could not — `kb/07-state-2026-09-16.md`.
+- ~~**One policy, three implementations** (bash, PowerShell, Python), with a
+  parity test for the redactor and none for the guard.~~ **CLOSED 2026-09-17.**
+  Four implementations, in fact — `install.ps1` carries a fourth copy of the
+  store list, which is itself something the test found. `tests/test_policy.sh`
+  asks all four the same questions about both lists (paths and credential
+  names), and `tests/test_parity_guard.sh` runs the two hooks against a corpus
+  built from the project's own documentation and scripts.
+
+  It has already earned the maintenance: the corpus caught the port throwing on
+  `ANTHROPIC_MODEL=glm-5.2` while `tests/test_guard.sh --pwsh` was green at 135
+  of 135, because no case there was a bare assignment.
 
 ---
 
