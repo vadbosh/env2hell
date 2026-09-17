@@ -30,26 +30,36 @@ done
 pass=0
 fail=0
 
-# check <expected-exit> <command-string>
+# When set, every check runs under `timeout <seconds>`. Exit 124 then means the
+# guard did not finish, which for a PreToolUse hook means the call went through
+# unguarded — a distinct failure from "allowed it", and worth seeing as itself.
+CHECK_TIMEOUT=""
+
+# check <expected-exit> <command-string> [label]
+# The label is what gets printed. A command of a few thousand sub-commands is a
+# legitimate case and an illegible line.
 check() {
-    local want="$1" cmd="$2" got payload
+    local want="$1" cmd="$2" label="${3:-$2}" got payload
     # The python program is single-quoted on purpose: its $ and quotes belong
     # to python, not to the shell.
     # shellcheck disable=SC2016
     payload="$(printf '%s' "$cmd" | python3 -c \
         'import json,sys; print(json.dumps({"tool_input":{"command":sys.stdin.read()}}))')"
+    # $RUNNER is a command plus its flags and has to split into words; so does
+    # the optional timeout prefix.
+    # shellcheck disable=SC2086
     if [ -n "$RUNNER" ]; then
-        printf '%s' "$payload" | $RUNNER "$GUARD" >/dev/null 2>&1
+        printf '%s' "$payload" | ${CHECK_TIMEOUT:+timeout $CHECK_TIMEOUT} $RUNNER "$GUARD" >/dev/null 2>&1
     else
-        printf '%s' "$payload" | "$GUARD" >/dev/null 2>&1
+        printf '%s' "$payload" | ${CHECK_TIMEOUT:+timeout $CHECK_TIMEOUT} "$GUARD" >/dev/null 2>&1
     fi
     got=$?
     if [ "$got" = "$want" ]; then
         pass=$((pass + 1))
-        printf '  ok    %-52s exit=%s\n' "$cmd" "$got"
+        printf '  ok    %-52s exit=%s\n' "$label" "$got"
     else
         fail=$((fail + 1))
-        printf '  FAIL  %-52s exit=%s (expected %s)\n' "$cmd" "$got" "$want"
+        printf '  FAIL  %-52s exit=%s (expected %s)\n' "$label" "$got" "$want"
     fi
 }
 
@@ -212,6 +222,25 @@ check 0 'printf "%s" "$(curl -s -u "$E:$JIRA_API_TOKEN" https://example.com)"'
 check 0 'echo "$(cat /tmp/x)" && curl -H "Authorization: $API_TOKEN" https://x'
 # ...but a printing command *inside* the substitution is still printing it
 check 2 'echo "$(printf %s "$JIRA_API_TOKEN")"'
+
+echo
+echo "size — the guard has to finish inside its own hook timeout"
+# A1 of review-2026-09-17-secrets-guard.md. The cost used to be per
+# sub-command, with two forks each, so a heredoc of 550 lines outlived
+# "timeout": 5 — and a PreToolUse hook killed at its timeout does not deny, it
+# lets the call through with nothing said. Exit 124 below is that failure, and
+# it reads differently from exit 0.
+#
+# The denied read sits at the END on purpose: everything before it has to be
+# walked before the guard can reach it.
+CHECK_TIMEOUT=10
+big_sep="$(printf ':;%.0s' $(seq 1 2000))cat .env"
+check 2 "$big_sep" '2000 sub-commands, then a read'
+# $( ) strips trailing newlines, so the last line is joined to what follows
+# unless one is put back explicitly.
+big_lines="$(printf 'echo line %s\n' $(seq 1 2000))"$'\n'"cat .env"
+check 2 "$big_lines" '2000 lines, then a read'
+CHECK_TIMEOUT=""
 
 echo
 echo "structure — no early-exit grep behind a pipe, anywhere in the shipped code"

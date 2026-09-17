@@ -100,6 +100,35 @@ dummy `.env` created inside that directory, containing `DUMMY=not-a-secret`.
 
 ### A1. Past ~520 sub-commands the guard is killed by its own hook timeout and the command runs unguarded
 
+**CLOSED 2026-09-17, with C1.** Pass B and the credential pass are one awk
+program now, sharing the split they used to consume. Same ladder, same machine:
+
+    lines      before     after
+      10       0.273 s    0.057 s
+     100       1.281 s    0.080 s
+     500       6.925 s    0.173 s
+    1000      13.342 s    0.232 s
+    2000      26.616 s    0.480 s
+    5000         —        0.853 s
+   50000         —        8.171 s
+
+The pair that defined the item, under `timeout 5`: 1000 lines + `cat .env` was
+`KILLED` at 5 s, and is now `BLOCK` at 0.320 s. And through the **installed**
+hook, the same 1208-byte command that read the dummy `.env` earlier today:
+
+    :;:;:; … (600 times) … ;cat /tmp/…/sbx/.env
+    # [secrets-guard] Blocked: that file can contain secrets.
+
+At `GUARD_TIMEOUT = 30` the threshold moves from roughly 520 sub-commands to
+roughly 180 000. `tests/test_guard.sh` grows a `size` group that runs two
+2000-sub-command cases under `timeout 10` and expects exit 2; exit 124 there is
+the failure this item was about, and it reads differently from exit 0.
+
+A 1 MB single-token command went 0.83 s → 0.96 s: the character loop is now
+walked once instead of the string being handed to sed and grep, and that is the
+one input where the old shape was cheaper. One-line commands are unchanged at
+0.05-0.06 s.
+
 **Class:** silent wrong result — the assistant runs the command, the guard says
 nothing, and nothing in the transcript records that the check did not happen.
 
@@ -583,6 +612,10 @@ Measurements on this object, this machine, GNU Awk 5.3.2, bash 5.3.9, from
 `date +%s.%N` around a single invocation.
 
 ### C1. Three to seven processes per sub-command
+
+**CLOSED 2026-09-17, with A1.** The forks are gone: the two shell loops are one
+awk program. Numbers in A1. The per-call cost of an ordinary one-line command is
+0.05-0.06 s, essentially all of it process startup for `jq` and `awk`.
 
 Pass B forks `sed` once and `grep` twice per sub-command (lines 141-142); the
 credential pass forks `grep` once more per sub-command and two to three per
