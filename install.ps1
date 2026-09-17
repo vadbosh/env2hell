@@ -138,7 +138,25 @@ $SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
                  '*.git-credentials*','*.npmrc*','*.pypirc*','*.pgpass*','*.my.cnf*',
                  '*.azure/*','*.kube/config*','*.docker/config.json*',
                  '*Microsoft.PowerShell_profile.ps1*',
-                 '/proc/*/environ*','*credentials*','*secrets*')
+                 '/proc/*/environ*','*credentials*','*secrets*',
+                 # The stores of the tools a developer has open on the same
+                 # day. Kept in step with SECRET_FILES in lib/patch_config.py;
+                 # tests/test_policy.sh asks all three implementations the same
+                 # question rather than diffing regexes against globs.
+                 '*/gh/hosts.yml*','*.terraformrc*','*terraform.rc*',
+                 '*credentials.tfrc.json*',
+                 '*/gcloud/credentials.db*','*/gcloud/access_tokens.db*',
+                 '*/gcloud/application_default_credentials.json*',
+                 '*.cargo/credentials*','*.gem/credentials*',
+                 '*.m2/settings.xml*','*.m2/settings-security.xml*',
+                 '*rclone.conf*','*.vault-token*','*.databrickscfg*',
+                 '*.snowflake/config*','*/containers/auth.json*',
+                 '*/helm/registry/config.json*')
+# `.env.example` and its siblings are committed precisely because they hold no
+# values. The `*.env.*` deny above catches them, so they get a rule of their
+# own — more specific, the way `printenv *` is more specific than `printenv`.
+$EnvTemplates = @('*.env.example','*.env.sample','*.env.template',
+                  '*.env.dist','*.env.defaults')
 
 # Ownership is the program a hook entry runs, never a substring of the line.
 # A user's own wrapper — `& "C:\me\bin\wrap-secrets-guard" -Audit` — matched
@@ -449,6 +467,7 @@ function Update-OpencodeConfig ($Path, $WithRule) {
     $wanted = [ordered]@{}
     foreach ($k in $DumpRules.Keys) { $wanted[$k] = $DumpRules[$k] }
     foreach ($r in $Readers) { foreach ($f in $SecretFiles) { $wanted["$r $f"] = 'deny' } }
+    foreach ($r in $Readers) { foreach ($f in $EnvTemplates) { $wanted["$r $f"] = 'allow' } }
 
     foreach ($k in $wanted.Keys) {
         $current = if (Test-Property $bash $k) { $bash.$k } else { $null }

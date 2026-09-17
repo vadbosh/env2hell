@@ -131,10 +131,24 @@ The files treated as secret stores:
 ~/.bashrc  ~/.zshrc  ~/.profile  ~/.bash_profile  ~/.zshenv  ~/.netrc
 _netrc  Microsoft.PowerShell_profile.ps1          ← the Windows spellings
 /proc/*/environ  *credentials*  *secrets*
+gh/hosts.yml  .terraformrc  credentials.tfrc.json  .cargo/credentials
+.gem/credentials  .m2/settings.xml  .m2/settings-security.xml  rclone.conf
+gcloud/credentials.db  gcloud/application_default_credentials.json
+.vault-token  .databrickscfg  .snowflake/config  containers/auth.json
+helm/registry/config.json
 ```
 
 Either path separator is accepted, so the Windows form of the same store —
 `C:\Users\you\.aws\credentials` — is matched as readily as the Unix one.
+
+Two absences are decisions rather than gaps. `~/.ssh/config` is not on the list:
+it holds hostnames and `IdentityFile` paths, not keys, and denying it would cost
+ordinary work for nothing. And `.env.example`, `.env.sample`, `.env.template`,
+`.env.dist` and `.env.defaults` are exempt from the `.env` rule — they are
+committed precisely because they hold no values, and reading one is the first
+thing anybody does in an unfamiliar repository. Both are pinned by
+`tests/test_policy.sh`, which asks all three implementations the same question,
+so neither can be added back by tidiness.
 
 Reading one of these with `cat`, `head`, `tail`, `less`, `strings`, or with
 PowerShell's `type` and `gc`, is denied. Listing them, moving them or checking

@@ -132,11 +132,25 @@ $env:SAMPLE = 'glpat-EXAMPLEEXAMPLEEXAMPLE1234'
 ~/.bashrc  ~/.zshrc  ~/.profile  ~/.bash_profile  ~/.zshenv  ~/.netrc
 _netrc  Microsoft.PowerShell_profile.ps1          ← написания для Windows
 /proc/*/environ  *credentials*  *secrets*
+gh/hosts.yml  .terraformrc  credentials.tfrc.json  .cargo/credentials
+.gem/credentials  .m2/settings.xml  .m2/settings-security.xml  rclone.conf
+gcloud/credentials.db  gcloud/application_default_credentials.json
+.vault-token  .databrickscfg  .snowflake/config  containers/auth.json
+helm/registry/config.json
 ```
 
 Разделитель пути принимается любой, поэтому то же хранилище в написании для
 Windows — `C:\Users\you\.aws\credentials` — ловится так же, как путь через
 прямой слэш.
+
+Двух путей в списке нет намеренно. `~/.ssh/config` держит имена хостов и пути к
+ключам, а не сами ключи, — запрет на него ломал бы обычную работу и ничего не
+давал. Шаблоны `.env.example`, `.env.sample`, `.env.template`, `.env.dist` и
+`.env.defaults` выведены из-под правила для `.env`: их кладут в репозиторий
+именно потому, что значений в них нет, и открывают первыми в незнакомом проекте.
+Оба решения закреплены в `tests/test_policy.sh` — он задаёт всем трём
+реализациям один и тот же вопрос, так что вернуть эти пути обратно «для порядка»
+не выйдет.
 
 Чтение любого из них через `cat`, `head`, `tail`, `less`, `strings`, а также
 через `type` и `gc` из PowerShell, запрещено. Перечислить их, переместить или

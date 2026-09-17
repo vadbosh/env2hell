@@ -466,9 +466,24 @@ else
 fi
 
 # ── opencode, which nothing here used to touch ──────────────────────────────
-# patch_opencode writes 394 permission rules into a live configuration and had
-# no test at all. It also has a second filename to deal with: Opencode reads
-# opencode.jsonc too, and a file earns that extension by carrying comments.
+# patch_opencode writes a permission rule per reader per secret store into a
+# live configuration and had no test at all. It also has a second filename to
+# deal with: Opencode reads opencode.jsonc too, and a file earns that extension
+# by carrying comments.
+#
+# The count is read from the constants, not written out here. It was 394, and
+# the day the store list grew it was four failing assertions and no defect —
+# the one reason a test must never fail.
+# patch_opencode writes DUMP_RULES and file_rules() into the same map, so the
+# count is the size of both together.
+want_rules="$(python3 - "$PATCH" <<'PY'
+import runpy, sys
+mod = runpy.run_path(sys.argv[1])
+wanted = dict(mod["DUMP_RULES"])
+wanted.update(mod["file_rules"]())
+print(len(wanted))
+PY
+)"
 
 oc_dir="$tmp/home/.config/opencode"
 oc_run () {                     # oc_run — prints nothing, returns the exit code
@@ -495,7 +510,7 @@ d = json.load(open(sys.argv[1]))
 print(len(d.get("permission", {}).get("bash", {})), len(d.get("plugin", [])), len(d.get("instructions", [])))
 PY
 )"
-if [ "$first_rc" -eq 0 ] && [ "$rules" = "394 plugin" ] && [ "$second" = "394 1 1" ]; then
+if [ "$first_rc" -eq 0 ] && [ "$rules" = "$want_rules plugin" ] && [ "$second" = "$want_rules 1 1" ]; then
     ok "opencode: three runs write the rules once ($rules)"
 else
     no "opencode: three runs write the rules once" "first=$rules after three=$second rc=$first_rc"
@@ -534,7 +549,7 @@ d = json.load(open(sys.argv[1]))
 print(len(d.get("permission", {}).get("bash", {})))
 PY
 )"
-if [ "$rc" -eq 0 ] && [ "$wired" = 394 ]; then
+if [ "$rc" -eq 0 ] && [ "$wired" = "$want_rules" ]; then
     ok "opencode: a .jsonc with no comments in it is wired normally"
 else
     no "opencode: a .jsonc with no comments in it is wired normally" "exit $rc, rules $wired"
@@ -742,7 +757,7 @@ installed="$(sh_state)"
 # Four hook commands on Claude Code: the guard before the command, the redactor
 # on results it can rewrite, the notice on the ones it cannot, and the failure
 # warning.
-if [ "$installed" = "hooks=4 rules=394 plugins=1 bins=3 model=kept-by-the-user" ]; then
+if [ "$installed" = "hooks=4 rules=$want_rules plugins=1 bins=3 model=kept-by-the-user" ]; then
     ok "install.sh: the whole thing lands ($installed)"
 else
     no "install.sh: the whole thing lands" "got [$installed]"
@@ -859,10 +874,10 @@ d = json.load(open(sys.argv[1]))
 print(len(d.get("permission", {}).get("bash", {})), len(d.get("plugin", [])))
 PY
 )"
-    if [ "$oc_written" = "394 1" ]; then
-        ok "install.ps1: opencode gets the same 394 rules and the plugin"
+    if [ "$oc_written" = "$want_rules 1" ]; then
+        ok "install.ps1: opencode gets the same $want_rules rules and the plugin"
     else
-        no "install.ps1: opencode gets the same 394 rules and the plugin" "got [$oc_written]"
+        no "install.ps1: opencode gets the same rules and the plugin" "want [$want_rules 1] got [$oc_written]"
     fi
 else
     printf '  skip  install.ps1 end to end — pwsh not installed\n'

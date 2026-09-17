@@ -61,6 +61,13 @@ exists to produce, so check the generated input before believing a difference.
 
 ### A1. A Windows drive path is exempt from the name tier in the port and masked by the POSIX version
 
+**CLOSED 2026-09-17.** `bash tests/test_safe_env.sh` and `--pwsh`, both
+`passed 15, failed 0`; `bash tests/test_parity_safe_env.sh` → `passed 4,
+failed 0`. Resolved the port's way, as proposed: the POSIX `named_credential`
+gained `^[A-Za-z]:[\/\\]`, and the existing exclusion was widened from
+`^[~.]?\/` to `^[~.]?[\/\\]` so the backslash spellings of `/path`, `./path`
+and `~/path` are covered too.
+
 **Class:** divergence with a security direction — the port shows a value the
 POSIX version hides. Whether that is the wrong direction depends on the value,
 which is the problem: the two files disagree about a rule that is written down
@@ -101,6 +108,9 @@ described there.
 drive-letter form, the backslash form, and `.\` — each expected to print.
 
 ### A2. An empty value prints as `NAME` in one implementation and `NAME=` in the other
+
+**CLOSED 2026-09-17.** Same commands as A1. Resolved as proposed — `NAME=` on
+both sides, the POSIX one changing.
 
 **Class:** divergence only — no security consequence. It is listed because the
 risk is that someone later "fixes" one to match the other by guesswork, and the
@@ -192,8 +202,10 @@ What is arguable:
     bash tests/test_safe_env.sh          # passed ≥ 14, failed 0; exit 0
     bash tests/test_safe_env.sh --pwsh   # same count; exit 0
     bash tests/test_redact.sh            # passed 89, failed 0; exit 0
-    bash <the safe-env parity script>    # 44 values, 0 divergences
+    bash tests/test_parity_safe_env.sh   # passed 4, failed 0; exit 0
 
 - both items have a case in `tests/test_safe_env.sh` that failed on one
   implementation before the fix and passes on both after
-- the parity script lives in `tests/` rather than in a temporary directory
+- **Done 2026-09-17:** the parity script lives in `tests/`, not in a temporary
+  directory. It needs no batching — the whole table is one process per side by
+  construction

@@ -224,6 +224,24 @@ check 0 'echo "$(cat /tmp/x)" && curl -H "Authorization: $API_TOKEN" https://x'
 check 2 'echo "$(printf %s "$JIRA_API_TOKEN")"'
 
 echo
+echo "multi-line — a newline separates sub-commands, like ; does"
+# A1 of review-2026-09-17-secrets-guard-ps1.md. The POSIX guard never had to say
+# this: its awk program reads records, and a record is a line. The port was
+# written from the separator list alone, so every case below diverged — in both
+# directions. A label is passed because a command with a newline in it does not
+# fit on a result line.
+check 2 $'ls -la\nenv'                          'dump on the second line'
+check 2 $'cd /tmp\nsudo env'                    'dump after a wrapper, second line'
+check 2 $'echo hi && \\\nenv'                   'backslash continuation into a dump'
+check 2 $'ls -la\ncat .env'                     'read on the second line'
+check 0 $'git log --oneline |\n  head -20'      'a pipeline broken over two lines'
+# locality has to survive the newline too: these are the cases the suite already
+# pins on one line, written on two
+check 0 $'ssh -i ~/.ssh/id.pem host uptime\nhead -5 report.txt'      'key on one line, reader on the next'
+check 0 $'rsync -e "ssh -i ~/.ssh/id.pem" a b\ncat report.txt'       'rsync key, reader on the next line'
+check 0 $'git commit -m "docs: cat .env ends the same way"\nhead -5 CHANGELOG.md' 'commit message, reader next line'
+
+echo
 echo "size — the guard has to finish inside its own hook timeout"
 # A1 of review-2026-09-17-secrets-guard.md. The cost used to be per
 # sub-command, with two forks each, so a heredoc of 550 lines outlived

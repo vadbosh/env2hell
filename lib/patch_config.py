@@ -185,6 +185,21 @@ SECRET_FILES = [
     # Where a Windows user writes `$env:API_KEY = "..."`.
     "*Microsoft.PowerShell_profile.ps1*",
     "/proc/*/environ*", "*credentials*", "*secrets*",
+    # The stores of the tools a developer has open on the same day. Kept in step
+    # with SECRET_PATHS in bin/secrets-guard and $secrets in the port — they are
+    # regular expressions and these are globs, so tests/test_policy.sh asks all
+    # three the same question instead of diffing them as text.
+    "*/gh/hosts.yml*", "*.terraformrc*", "*terraform.rc*",
+    "*credentials.tfrc.json*",
+    "*/gcloud/credentials.db*", "*/gcloud/access_tokens.db*",
+    "*/gcloud/application_default_credentials.json*",
+    "*.cargo/credentials*", "*.gem/credentials*",
+    "*.m2/settings.xml*", "*.m2/settings-security.xml*",
+    "*rclone.conf*", "*.vault-token*", "*.databrickscfg*",
+    "*.snowflake/config*", "*/containers/auth.json*",
+    "*/helm/registry/config.json*",
+    # `~/.ssh/config` is deliberately absent: hostnames and IdentityFile paths,
+    # not keys. Pinned as an `allow` in tests/test_policy.sh.
 ]
 
 PLUGIN_ENTRY = "./plugins/secrets-guard.ts"
@@ -195,8 +210,23 @@ PLUGIN_ENTRY = "./plugins/secrets-guard.ts"
 INSTRUCTION_ENTRY = "~/.config/opencode/instructions/secrets-hygiene.md"
 
 
+# `.env.example` and its siblings are committed precisely because they hold no
+# values, and reading one is the first thing anybody does in an unfamiliar
+# repository. The `*.env.*` deny above catches them, so they need a rule of
+# their own — more specific, the way `printenv *` is more specific than
+# `printenv`. The two hooks express the same exemption differently, because a
+# regular expression can be narrowed and a glob cannot; tests/test_policy.sh
+# checks that all three agree on the outcome.
+ENV_TEMPLATES = [
+    "*.env.example", "*.env.sample", "*.env.template",
+    "*.env.dist", "*.env.defaults",
+]
+
+
 def file_rules() -> dict:
-    return {f"{r} {p}": "deny" for r in READERS for p in SECRET_FILES}
+    rules = {f"{r} {p}": "deny" for r in READERS for p in SECRET_FILES}
+    rules.update({f"{r} {p}": "allow" for r in READERS for p in ENV_TEMPLATES})
+    return rules
 
 
 def strip_jsonc(text: str) -> str:

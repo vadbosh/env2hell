@@ -56,7 +56,12 @@ $scan = $command -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
 # Wrappers that precede the real command and must be stepped over.
 $wrappers = @('sudo', 'rtk', 'time', 'command', 'exec', 'xargs', 'nice', 'nohup', '&')
 
-foreach ($part in ($scan -split '\|\||&&|;|&|\|')) {
+# A newline separates sub-commands as surely as `;` does. The POSIX guard never
+# had to say so — its awk program reads records, and a record is a line — so the
+# port was written from the separator list alone and a dump on the second line
+# of a two-line command went straight through. `\r?\n` and not `\n`, because
+# this is the implementation that runs where line endings are CRLF.
+foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
     $piece = $part.Trim()
     if ([string]::IsNullOrWhiteSpace($piece)) { continue }
 
@@ -118,6 +123,21 @@ $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            '|\.kube[/\\]config|\.azure[/\\]' +
            '|\.git-credentials|\.npmrc|\.pypirc|\.pgpass|\.my\.cnf' +
            '|Microsoft\.PowerShell_profile\.ps1' +      # where $env:KEY is set
+           # The stores of the tools a developer has open on the same day. Each
+           # held a live token and printed it on request until 2026-09-17.
+           # review-2026-09-17-secrets-guard.md item A11.
+           '|[/\\]gh[/\\]hosts\.yml' +                  # gh, a token in plain text
+           '|\.terraformrc|terraform\.rc|credentials\.tfrc\.json' +
+           '|[/\\]gcloud[/\\](credentials\.db|access_tokens\.db' +
+           '|application_default_credentials\.json)' +
+           '|\.cargo[/\\]credentials|\.gem[/\\]credentials' +
+           '|\.m2[/\\]settings(-security)?\.xml' +
+           '|rclone\.conf|\.vault-token|\.databrickscfg' +
+           '|\.snowflake[/\\]config|[/\\]containers[/\\]auth\.json' +
+           '|[/\\]helm[/\\]registry[/\\]config\.json' +
+           # `~/.ssh/config` is deliberately NOT here: hostnames and
+           # IdentityFile paths, not keys. Pinned as an `allow` in
+           # tests/test_policy.sh so nobody adds it by tidiness.
            '|/proc/[0-9]+/environ)'                     # Linux only, by nature
 
 # The reader and the path have to be in the SAME sub-command. Looking for them
@@ -139,7 +159,13 @@ $quote = ''
 foreach ($ch in $command.ToCharArray()) {
     if ($quote -eq '') {
         if ($ch -eq '"' -or $ch -eq "'") { $quote = $ch; $buf += $ch; continue }
-        if ($ch -eq ';' -or $ch -eq '&' -or $ch -eq '|') { $rawSubs += $buf; $buf = ''; continue }
+        # The newline is a separator here too, and for a sharper reason than in
+        # pass A: without it the reader on one line and the secret path on
+        # another counted as one sub-command, which is exactly the locality the
+        # `rsync -e "ssh -i …pem" … | head` incident bought. Written on two
+        # lines, that command and the commit-message case were both denied.
+        if ($ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
+            $ch -eq "`n" -or $ch -eq "`r") { $rawSubs += $buf; $buf = ''; continue }
         $buf += $ch
     } else {
         if ($ch -eq $quote) { $quote = '' }

@@ -433,6 +433,19 @@ not swallow the rest of the line.
 
 ### A9. The same policy exists in two places and they disagree
 
+**CLOSED 2026-09-17, with A11.** `bash tests/test_policy.sh` → `passed 102,
+failed 0`. Not a textual diff — the hooks hold regular expressions and the
+installer holds globs, so they cannot be compared as text. The test carries the
+policy as a list of `deny`/`allow` paths and asks all three implementations the
+same question: the POSIX guard and the port by exit status, `file_rules()` by
+glob match. Adding a store is one line in that list and then three sides made to
+agree.
+
+Falling out of it: the `.env` template exemption (A7) existed only in the hooks,
+so Opencode still denied `cat .env.example`. `file_rules()` now emits an `allow`
+rule per template, more specific than the `*.env.*` deny — the shape
+`printenv *`: ask already uses beside `printenv`: deny.
+
 **Class:** silent wrong result — the same command is denied in Opencode and
 allowed in Claude Code and Codex, on the same machine, with no sign anywhere
 that the two differ.
@@ -502,6 +515,20 @@ of an arbitrary program is not decidable, and the invariant says so.
 widened gate does not start denying reads.
 
 ### A11. The credential stores of fourteen everyday tools are not in the list
+
+**CLOSED 2026-09-17, with A9.** `bash tests/test_policy.sh` → `passed 102,
+failed 0`, which covers 30 stores denied and 4 paths allowed across all three
+implementations. Added to `bin/secrets-guard`, `bin/secrets-guard.ps1`,
+`SECRET_FILES` in `lib/patch_config.py`, `$SecretFiles` in `install.ps1` — that
+fourth copy was not in the `Touches` line below and is exactly the kind of thing
+A9's test now catches — and to the table in `docs/patterns.en.md` /
+`docs/patterns.ru.md`.
+
+Two judgement calls, both pinned as `allow` cases rather than left to memory:
+`~/.ssh/config` stays readable, and `~/.config/hub` was left out — the path is
+one short word inside `.config`, and a pattern for it would have matched
+`~/.config/hubble/` and anything else starting the same way. The tool is legacy;
+say so rather than deny half of `.config`.
 
 **Class:** silent wrong result — reading one of these prints live tokens, and
 the guard says nothing.

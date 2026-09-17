@@ -19,10 +19,22 @@ ENV_BIN=/usr/bin/env
 [ -x "$ENV_BIN" ] || ENV_BIN=/bin/env
 [ -x "$ENV_BIN" ] || { echo "safe-env: no env binary at /usr/bin/env or /bin/env" >&2; exit 3; }
 
+# `-0` and `RS="\0"`, not lines. A value containing a newline used to arrive as
+# several records: the first carried NAME= and was judged, and the rest had no
+# `=` at all, so the "empty value" branch printed them verbatim with no test of
+# any kind. A private key in a variable came out as a masked header followed by
+# its own body, and the number in the mask was the length of the header line.
+# The PowerShell port never had this — it iterates variables, not lines — and
+# the fix is copied from it. review-2026-09-17-safe-env.md item A1.
+#
+# Both awks on this machine take a NUL record separator (gawk 5.3.2, mawk
+# 1.3.4); tests/test_safe_env.sh has a multi-line case, so an awk that cannot
+# will fail there rather than leak quietly.
+#
 # The awk program is single-quoted on purpose: every $ and \ in it belongs to
 # awk, not to the shell.
 # shellcheck disable=SC2016
-"$ENV_BIN" | "$AWK" -F'=' '
+"$ENV_BIN" -0 | "$AWK" -v RS='\0' '
 function mask(v, l) { l = length(v); return "<REDACTED:" l ">" }
 BEGIN {
   RE = "AKIA[0-9A-Z]{16}"
@@ -55,14 +67,22 @@ BEGIN {
 function named_credential(key, val) {
   if (toupper(key) !~ CRED)                     return 0
   if (length(val) < 8)                          return 0
-  if (val ~ /^[~.]?\//)                         return 0     # /path, ./path, ~/path
+  if (val ~ /^[~.]?[\/\\]/)                     return 0     # /path, ./path, ~/path, and the backslash spellings
+  if (val ~ /^[A-Za-z]:[\/\\]/)                 return 0     # C:/path, C:\path — Git Bash and WSL are handed these
   if (tolower(val) ~ /^(true|false|yes|no|on|off|[0-9]+)$/) return 0
   return 1
 }
 {
-  key = $1
-  val = substr($0, length(key) + 2)
-  if (val == "") { print key; next }
+  # $1 is no longer the name: with RS="\0" a record is a whole NAME=value pair,
+  # newlines and all, so the split is the first `=` and nothing else.
+  eq = index($0, "=")
+  if (eq == 0) next                 # not a NAME=value pair; env does not emit these
+  key = substr($0, 1, eq - 1)
+  val = substr($0, eq + 1)
+  # `NAME=`, not a bare `NAME`: it is what env itself prints, it is what
+  # grep "^NAME=" expects, and a bare name reads as a variable with no value
+  # rather than one with an empty value. The port already did this.
+  if (val == "") { print key "="; next }
   # explicit provider token / embedded secret
   if (val ~ RE)                                                          { print key "=" mask(val); next }
   if (tolower($0) ~ /identified by ['"'"'"][^'"'"'"]{6,}/)                { print key "=" mask(val); next }

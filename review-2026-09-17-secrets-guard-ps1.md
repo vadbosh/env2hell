@@ -61,6 +61,14 @@ it is why the divergences below are all one root cause.
 
 ### A1. A newline is not a sub-command boundary, so a two-line command is judged as one
 
+**CLOSED 2026-09-17.** `bash tests/test_guard.sh` and `--pwsh`, both
+`passed 103, failed 0`; `bash tests/test_parity_guard.sh` → `passed 15,
+failed 0`, including 426 real command lines with no divergence. Fixed as
+proposed: `\r?\n` added to the pass A split, and the newline made a separator in
+the `$rawSubs` character loop. The parity scripts moved out of `/tmp` into
+`tests/test_parity_guard.sh`, and `tests/test_guard.sh` gained a `multi-line`
+group of eight cases that runs against both implementations.
+
 **Class:** both at once, which is why it ranks first —
 **silent wrong result** in pass A (a dump on the second line is not seen) and
 **damage** in pass B (an ordinary two-line command is denied for something on
@@ -203,11 +211,13 @@ What is arguable:
     bash tests/test_guard.sh             # passed ≥ 101, failed 0; exit 0
     bash tests/test_guard.sh --pwsh      # same count; exit 0
 
-and the parity scripts report zero:
-
-    bash <the multi-line parity script>   # 0 divergences
-    bash <the locality parity script>     # 0 divergences
+    bash tests/test_parity_guard.sh      # passed 15, failed 0; exit 0
 
 - the six commands in A1 are cases in `tests/test_guard.sh`, failing on
   `--pwsh` before the fix and passing after
-- the parity scripts live in `tests/` rather than in a temporary directory
+- **Done 2026-09-17:** the parity scripts live in `tests/`, not in a temporary
+  directory, and the port runs through `tests/pwsh_batch.ps1` — one pwsh
+  process for the whole corpus instead of one per case, 380 s down to 53 s.
+  The first case in that file re-checks the batched route against a plain
+  `pwsh -File` run, because a harness that lies about verdicts is the failure
+  class the whole pass exists to catch

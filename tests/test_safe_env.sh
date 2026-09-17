@@ -127,5 +127,54 @@ else
     no "leaves a path alone — configuration, not a secret" "the path was masked"
 fi
 
+# A Windows path is configuration too, and a Git Bash or WSL shell is handed one
+# routinely. The port excluded these and the POSIX side did not — found by
+# tests/test_parity_safe_env.sh, review-2026-09-17-safe-env-ps1.md item A1.
+winpath="$(MYTEST_TOKEN_WIN='C:/Users/me/token' \
+           MYTEST_TOKEN_BS='C:\Users\me\token' \
+           MYTEST_TOKEN_REL='./secrets/token' \
+           run_tool 2>/dev/null)"
+for want in 'MYTEST_TOKEN_WIN=C:/Users/me/token' \
+            'MYTEST_TOKEN_BS=C:\Users\me\token' \
+            'MYTEST_TOKEN_REL=./secrets/token'; do
+    if grep -qxF "$want" <<< "$winpath"; then
+        ok "leaves a path alone: ${want#*=}"
+    else
+        no "leaves a path alone: ${want#*=}" "it was masked or dropped"
+    fi
+done
+
+# An empty value prints as NAME=, which is what env itself prints and what
+# grep '^NAME=' expects. The POSIX side printed a bare NAME until 2026-09-17.
+empty="$(MYTEST_EMPTY= run_tool 2>/dev/null)"
+if grep -qx 'MYTEST_EMPTY=' <<< "$empty"; then
+    ok "an empty value prints as NAME="
+else
+    no "an empty value prints as NAME=" \
+       "got: $(grep '^MYTEST_EMPTY' <<< "$empty" || echo '<no line at all>')"
+fi
+
+# The worst defect this file has carried: a value with a newline in it used to
+# be read as several records, and everything after the first line was printed
+# verbatim. A private key came out as a masked header followed by its own body.
+# review-2026-09-17-safe-env.md item A1. The body below is invented.
+key_body='MIIEpAIBAAKCAQEAxGZlbGxvd3NoaXBvZnRoZXJpbmdvbmU'
+key_value="-----BEGIN RSA PRIVATE KEY-----
+$key_body
+-----END RSA PRIVATE KEY-----"
+multi="$(MYTEST_PK="$key_value" run_tool 2>/dev/null)"
+if grep -Fq -- "$key_body" <<< "$multi"; then
+    no "a multi-line value is masked whole" "the key body reached the output"
+else
+    ok "a multi-line value is masked whole"
+fi
+# ...and the length in the mask is the value's, not the first line's.
+if grep -qx "MYTEST_PK=<REDACTED:${#key_value}>" <<< "$multi"; then
+    ok "the mask reports the length of the whole value"
+else
+    no "the mask reports the length of the whole value" \
+       "got: $(grep '^MYTEST_PK' <<< "$multi" || echo '<no line at all>')"
+fi
+
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
