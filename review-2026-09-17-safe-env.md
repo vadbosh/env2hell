@@ -82,6 +82,15 @@ variable and nothing real was ever in scope.
 
 ### A1. A multi-line value has everything after its first line printed in full, and the reported length is wrong
 
+**CLOSED 2026-09-17.** `bash tests/test_safe_env.sh` and `--pwsh`, both
+`passed 18, failed 0`, including a case that asserts the mask reports the whole
+value's length rather than the first line's. Fixed as proposed — `env -0` and
+`RS="\0"`, with the split on `index($0, "=")` because `$1` stops meaning the
+name. The mawk caveat in the Fix below turned out not to apply: mawk 1.3.4 and
+gawk 5.3.2 both take a NUL record separator here, so there is one code path and
+no silent fallback. `tests/test_parity_safe_env.sh` asks the same question of
+both implementations.
+
 **Class:** silent wrong result — the output looks masked, the mask carries a
 plausible number, and the secret is on the next line.
 
