@@ -24,6 +24,7 @@ ok () { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
 no () { fail=$((fail + 1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
 tmp="$(mktemp -d)" || exit 2
+mkdir -p "$tmp/nothing-installed"
 trap 'rm -rf "${tmp:?}"' EXIT
 
 # A checkout of its own: the shipped files, the changelog, and a commit to tag.
@@ -39,6 +40,11 @@ git -C "$repo" -c user.email=t@t -c user.name=t add -A
 git -C "$repo" -c user.email=t@t -c user.name=t commit -qm "the state under test"
 
 run_check () {                  # run_check [mirrors] — prints output, returns rc
+    # ENV2HELL_BIN_DIR points at an empty directory: since 2026-09-17 `check`
+    # compares the commands install.sh put on this machine without being asked,
+    # and a test whose result depends on what happens to be installed is not a
+    # test. Each case says which mirrors it means.
+    ENV2HELL_BIN_DIR="$tmp/nothing-installed" \
     ENV2HELL_MIRRORS="${1:-}" bash "$repo/release.sh" check 2>&1
 }
 
@@ -100,6 +106,26 @@ out="$(run_check "$tmp/not-ours")"
 case "$out" in
     *"none recognised"*) ok "a path that matches nothing does not read as agreement" ;;
     *) no "a path that matches nothing does not read as agreement" "$out" ;;
+esac
+
+# ── the installed commands are compared without being asked ─────────────────
+# They are the copies that actually run. Leaving them to a variable somebody has
+# to remember is how the installed guard was one commit behind at release time
+# on 2026-09-17 while `check` reported "none configured".
+mkdir -p "$tmp/installed"
+cp "$repo/bin/secrets-redact" "$repo/bin/safe-env" "$tmp/installed/"
+printf '# a stale copy\n' > "$tmp/installed/secrets-guard"
+out="$(ENV2HELL_BIN_DIR="$tmp/installed" bash "$repo/release.sh" check 2>&1)"
+case "$out" in
+    *"mirrors behind"*secrets-guard*) ok "a stale installed command is reported with no variable set" ;;
+    *) no "a stale installed command is reported with no variable set" "$out" ;;
+esac
+
+cp "$repo/bin/secrets-guard" "$tmp/installed/secrets-guard"
+out="$(ENV2HELL_BIN_DIR="$tmp/installed" bash "$repo/release.sh" check 2>&1)"
+case "$out" in
+    *"3, all identical"*) ok "three matching installed commands read as agreement" ;;
+    *) no "three matching installed commands read as agreement" "$out" ;;
 esac
 
 # ── tag, in the copy, never in the real repository ──────────────────────────

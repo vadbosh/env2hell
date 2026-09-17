@@ -11,10 +11,14 @@
 # rule into places outside this checkout, and a copy that is behind is the copy
 # that actually runs.
 #
-# ENV2HELL_MIRRORS is a colon-separated list of FILES holding a copy of
-# something this repository ships — the installed commands, the rule as it lands
-# in each assistant, a config canon that redistributes it. Machine-specific
-# paths belong to the machine, so nothing is hardcoded here:
+# The commands install.sh put in ~/.local/bin are checked without being asked
+# for — they are the copies that actually run, and leaving them to a variable
+# somebody has to remember is how the installed guard was a commit behind on
+# release day while `check` reported nothing to compare.
+#
+# ENV2HELL_MIRRORS adds to that list: FILES holding a copy of something this
+# repository ships that only this machine knows about — the rule as it lands in
+# each assistant, a config canon that redistributes it, a second checkout:
 #
 #   ENV2HELL_MIRRORS="$HOME/.local/bin/secrets-guard:$HOME/.local/bin/safe-env"
 #   ENV2HELL_MIRRORS="$ENV2HELL_MIRRORS:$HOME/.claude/rules/secrets-hygiene.md"
@@ -53,6 +57,25 @@ source_for() {
 	esac
 }
 
+# What install.sh put on this machine, when ENV2HELL_MIRRORS says nothing. The
+# variable exists for copies only the machine knows about — a rule file
+# redistributed by a config canon, a second checkout — and it used to be the
+# only source, so an unset variable meant the installed commands went
+# unwatched. They are exactly the copies that run, and install.sh derives their
+# directory the same way:
+#
+#   BIN_DIR="${ENV2HELL_BIN_DIR:-$HOME/.local/bin}"
+#
+# Found on 2026-09-17: the installed guard was one commit behind at release
+# time, and `check` said "none configured" rather than saying so.
+installed_mirrors() {
+	local dir="${ENV2HELL_BIN_DIR:-$HOME/.local/bin}" f
+	for f in secrets-guard secrets-redact safe-env; do
+		[ -e "$dir/$f" ] && printf '%s\n' "$dir/$f"
+	done
+	return 0
+}
+
 check_mirrors() {
 	local f src behind=0 n=0 unknown=0
 	while read -r f; do
@@ -74,7 +97,7 @@ check_mirrors() {
 			echo "    ${f/#$HOME/\~}  differs from ${src#"$SRC"/}"
 		fi
 	done <<-EOF
-	$(printf '%s\n' "${ENV2HELL_MIRRORS:-}" | tr ':' '\n')
+	$(printf '%s\n' "${ENV2HELL_MIRRORS:-}" | tr ':' '\n'; installed_mirrors)
 	EOF
 
 	if [ "$behind" -gt 0 ]; then
@@ -83,7 +106,7 @@ check_mirrors() {
 		return 1
 	fi
 	if [ "$n" -eq 0 ] && [ "$unknown" -eq 0 ]; then
-		echo "  mirrors:           none configured — set ENV2HELL_MIRRORS to compare copies"
+		echo "  mirrors:           nothing installed here, and ENV2HELL_MIRRORS is unset"
 		return 0
 	fi
 	if [ "$n" -eq 0 ]; then
