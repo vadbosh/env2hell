@@ -45,12 +45,25 @@ BEGIN {
   RE = RE "|tvly-[A-Za-z0-9-]{10,}"
   RE = RE "|AIza[A-Za-z0-9_-]{35}"
   RE = RE "|(sk|rk)_live_[A-Za-z0-9]{20,}"
-  RE = RE "|sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}"
   RE = RE "|at-[A-Za-z0-9]{30,}"
   RE = RE "|ATATT[A-Za-z0-9_=.-]{20,}"
   RE = RE "|eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\."
   RE = RE "|://[^/:@ ]+:[^/:@ ]{3,}@"
   RE = RE "|BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY"
+
+  # The OpenAI family sits apart because it needs a left boundary, and a
+  # boundary cannot go inside RE: the alternatives there are masked whole, and
+  # a leading character in the pattern would be masked with them.
+  #
+  # Unanchored, `sk-` matched inside an ordinary value:
+  # `ANTHROPIC_MODEL=zai-sk-glm-4-6-turbo-preview` came back masked — the one
+  # variable docs/patterns.md uses as its example of a value that prints.
+  #
+  # The boundary has to treat `-` as part of a word, not as a separator. A
+  # plain word boundary changes nothing here, because the character before
+  # `sk-` in that model name IS a hyphen. What a real key has in front of it is
+  # a space, a quote, `=`, `:` or the start of the value.
+  SK = "(^|[^A-Za-z0-9_-])sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}"
 
   # What the NAME says, for the values whose shape says nothing. A classic
   # Atlassian API token is 24 characters of letters and digits — the same shape
@@ -110,6 +123,7 @@ function named_credential(key, val) {
   if (val == "") { print key "="; next }
   # explicit provider token / embedded secret
   if (val ~ RE)                                                          { print key "=" mask(val); next }
+  if (val ~ SK)                                                          { print key "=" mask(val); next }
   if (tolower($0) ~ /identified by ['"'"'"][^'"'"'"]{6,}/)                { print key "=" mask(val); next }
   # generic high-entropy fallbacks (catch unprefixed keys: hex, hex.base64, long tokens)
   if (val ~ /^[A-Fa-f0-9]{32,}$/)                                         { print key "=" mask(val); next }

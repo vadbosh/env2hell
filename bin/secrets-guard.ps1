@@ -50,6 +50,27 @@ if ($payload.PSObject.Properties.Name -contains 'tool_input') {
 }
 if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
 
+# A heredoc body is data being written to a file, not a list of commands. Both
+# passes below used to read it as commands, so writing a file whose text
+# mentions `env` or `cat .env` was denied. `<<<` is a here-string, not a
+# heredoc: after the second `<` comes a third, which is neither `-`, a space, a
+# quote nor a letter, so it cannot match. The `cat > file` in front of the
+# heredoc is still a command and is still scanned.
+$kept = @()
+$heredoc = ''
+foreach ($line in ($command -split '\r?\n')) {
+    if ($heredoc -ne '') {
+        if ($line.Trim() -eq $heredoc) { $heredoc = '' }
+        continue
+    }
+    if ($line -match '<<-?\s*["'']?([A-Za-z_][A-Za-z0-9_]*)') {
+        $heredoc = $Matches[1]
+    }
+    $kept += $line
+}
+$command = $kept -join "`n"
+if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+
 # ---------- pass A: dump commands, on quote-stripped text ----------
 $scan = $command -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
 
@@ -66,17 +87,44 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
     if ([string]::IsNullOrWhiteSpace($piece)) { continue }
 
     $tokens = @($piece -split '\s+' | Where-Object { $_ -ne '' })
+
+    # `$tokens[1..($tokens.Count - 1)]` on a single-element array is
+    # `$tokens[1..0]`, which PowerShell reads as a DESCENDING range and indexes
+    # element 1 — out of bounds, and under Set-StrictMode that throws. The
+    # sub-command `ANTHROPIC_MODEL=glm-5.2` is one token and an assignment, so
+    # it hit this on the first line of the corpus. tests/test_parity_guard.sh
+    # caught it; tests/test_guard.sh did not, because no case there is a bare
+    # assignment.
+    # The leading comma is load-bearing: a function returning @() unrolls it to
+    # $null, and the next .Count throws under StrictMode. `,@()` returns the
+    # empty array itself.
+    function Drop-First ($t) {
+        if ($t.Count -gt 1) { return ,@($t[1..($t.Count - 1)]) }
+        return ,@()
+    }
+
     while ($tokens.Count -gt 0 -and $wrappers -contains $tokens[0].ToLower()) {
-        $tokens = @($tokens[1..($tokens.Count - 1)])
+        $tokens = Drop-First $tokens
+    }
+    # A leading assignment sets a variable for the command that follows; it is
+    # not the command. Skipping only the token would have been right, and
+    # instead the `=` failed the test below and the WHOLE sub-command was
+    # abandoned — so `FOO=bar env` dumped the environment.
+    while ($tokens.Count -gt 0 -and $tokens[0] -match '^[A-Za-z_][A-Za-z0-9_]*=') {
+        $tokens = Drop-First $tokens
     }
     if ($tokens.Count -eq 0) { continue }
 
-    $first = $tokens[0]
+    # `\env` is the ordinary way to bypass an alias and `/usr/bin/env` the
+    # ordinary way to bypass PATH. Neither is an evasion and both dumped the
+    # environment. The basename names the program — the same reading
+    # Test-OurCommand uses to decide whose hook entry is whose.
+    $first = $tokens[0] -replace '^\\', ''
+    $first = ($first -split '[\\/]')[-1]
     # Only a plain word can be a command name; "…, =…, {…, […, $…, *… are not.
     if ($first -notmatch '^[A-Za-z_][A-Za-z0-9_.:-]*$') { continue }
 
-    $rest = @()
-    if ($tokens.Count -gt 1) { $rest = @($tokens[1..($tokens.Count - 1)]) }
+    $rest = Drop-First $tokens
     $name = $first.ToLower()
 
     switch -Regex ($name) {
@@ -88,7 +136,13 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
             }
             if (-not $launches) { Deny $EnvMessage }
         }
-        '^(printenv)$'          { if ($rest.Count -eq 0) { Deny $EnvMessage } }
+        '^(printenv)$'          {
+            # `-0` and `--null` change the separator, not the scope: with no
+            # VARIABLE named, printenv still prints every pair.
+            $named = $false
+            foreach ($t in $rest) { if ($t -notlike '-*') { $named = $true } }
+            if (-not $named) { Deny $EnvMessage }
+        }
         '^(export)$'            { if ($rest.Count -eq 0 -or $rest[0] -eq '-p') { Deny $EnvMessage } }
         '^(set)$'               { if ($rest.Count -eq 0) { Deny $EnvMessage } }
         '^(history)$'           { Deny $EnvMessage }
@@ -138,7 +192,7 @@ $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            # `~/.ssh/config` is deliberately NOT here: hostnames and
            # IdentityFile paths, not keys. Pinned as an `allow` in
            # tests/test_policy.sh so nobody adds it by tidiness.
-           '|/proc/[0-9]+/environ)'                     # Linux only, by nature
+           '|/proc/([0-9]+|self|thread-self)/environ)'   # Linux only, by nature
 
 # The reader and the path have to be in the SAME sub-command. Looking for them
 # anywhere in the whole line denied things that read nothing:
@@ -183,6 +237,29 @@ $rawSubs += $buf
 # replacement contains no `env`, because -match is case-insensitive.
 $envTemplates = '\.env\.(example|sample|template|dist|defaults)'
 
+# ---------- pass D: a dump reached through something that runs commands -----
+# `bash -c env`, `eval env` and `python3 -c "print(os.environ)"` are not
+# evasions; they are shapes an assistant writes by habit, and pass A cannot see
+# inside them because it works on quote-stripped text.
+#
+# The payload has to BE the dump command, not merely contain the word: that is
+# what keeps `sh -c "set -e; make"` and `bash -c "echo env"` working. For the
+# interpreters the test is the idiom instead, because the payload is not shell
+# and parsing it is not on the table. Both lists are partial by construction —
+# docs/design.md says so under "what this does not do".
+$dumpWord = '(env|printenv|set|declare|typeset|history)'
+$payload  = '(-c|-e|eval)\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
+$idiom    = '(os\.environ|process\.env|%ENV|ENV\.to_h|ENV\.to_hash|ENV\.each)'
+# A command substitution runs its body as a command, and pass A never sees it.
+$subst    = '\$\(\s*' + $dumpWord + '\s*(\)|\|)'
+
+foreach ($rawSub in $rawSubs) {
+    if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
+    if ($rawSub -cmatch $payload -or $rawSub -cmatch $subst -or $rawSub -cmatch $idiom) {
+        Deny $EnvMessage
+    }
+}
+
 foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
     # Same stripping as pass A: the reader must be a command, not a word inside
@@ -224,7 +301,10 @@ foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
     # Only the printing commands, and only when they are the command — a
     # `grep echo` prints nothing of its own.
-    if ($rawSub -notmatch '(^|\s)(echo|printf)(\s|$)') { continue }
+    # A here-string prints its text too: `cat <<< "$GITHUB_TOKEN"` and
+    # `tee <<< "$API_KEY"` put the value on stdout exactly as `echo` would, and
+    # the gate used to be echo|printf only.
+    if ($rawSub -notmatch '(^|\s)(echo|printf)(\s|$)' -and $rawSub -notmatch '<<<') { continue }
     # Single-quoted spans are removed before the match. Inside them the shell
     # performs no expansion at all, so `$SECRET` there is four literal
     # characters — and writing a template that contains one is ordinary work:

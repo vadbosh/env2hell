@@ -251,6 +251,74 @@ check 0 'echo "$(cat /tmp/x)" && curl -H "Authorization: $API_TOKEN" https://x'
 check 2 'echo "$(printf %s "$JIRA_API_TOKEN")"'
 
 echo
+echo "denied — the command name written another way"
+# A4. A leading assignment, an escaped name or an absolute path used to abandon
+# the whole sub-command rather than the one token.
+check 2 '/usr/bin/env'
+check 2 '\env'
+check 2 'FOO=bar env'
+check 2 'FOO=bar BAR=baz printenv'
+check 0 'FOO=bar make'
+check 0 '/usr/bin/git status'
+# A sub-command that is nothing but an assignment. Found by
+# tests/test_parity_guard.sh, not here: the port threw on it, because dropping
+# the first element of a one-element array indexes out of bounds under
+# Set-StrictMode. No case in this file was a bare assignment until now.
+check 0 'ANTHROPIC_MODEL=glm-5.2'
+check 0 'sudo'
+
+echo
+echo "denied — printenv still dumps everything when only flags follow"
+# A5. `-0` and `--null` change the separator, not the scope.
+check 2 'printenv -0'
+check 2 'printenv --null'
+check 0 'printenv PATH'
+
+echo
+echo "denied — /proc/self/environ, not only a numbered process"
+# A2.
+check 2 'cat /proc/self/environ'
+check 2 'strings /proc/thread-self/environ'
+check 2 'cat /proc/1/environ'
+
+echo
+echo "denied — a dump reached through something that runs commands"
+# A3. None of these is an evasion; each is a shape an assistant writes by habit.
+# The payload has to BE the dump command, which is what keeps the last three
+# working.
+check 2 'bash -c env'
+check 2 'sh -c "printenv"'
+check 2 'eval env'
+check 2 'echo $(env)'
+check 2 '$(env)'
+check 2 'python3 -c "import os; print(os.environ)"'
+check 2 'node -e "console.log(process.env)"'
+check 2 'perl -e "print %ENV"'
+check 2 'ruby -e "puts ENV.to_h"'
+check 0 'bash -c "echo env"'
+check 0 'sh -c "set -e; make"'
+check 0 'python3 -c "print(1+1)"'
+
+echo
+echo "denied — a here-string prints its text as surely as echo does"
+# A10. The gate was echo|printf only, so `cat <<< "$TOKEN"` put the value on
+# stdout with nothing to stop it.
+check 2 'cat <<< "$GITHUB_TOKEN"'
+check 2 'tee <<< "$API_KEY"'
+check 0 'grep foo <<< "$line"'
+check 0 'cat <<< "hello"'
+
+echo
+echo "allowed — a heredoc body is data, not a list of commands"
+# A8. This is how the repository came to document a workaround for its own
+# guard: a commit message or a case file mentioning `env` was denied.
+check 0 $'cat > /tmp/c.txt <<CASES\nenv\nprintenv\nCASES'
+check 0 $'cat > /tmp/n.md <<\'EOF\'\nThen run cat .env to see it.\nEOF'
+check 0 $'cat > /tmp/n.md <<-EOF\n\tenv\n\tEOF'
+# ...and a real command after the terminator is still a command
+check 2 $'cat > /tmp/c.txt <<EOF\nhello\nEOF\nenv'
+
+echo
 echo "multi-line — a newline separates sub-commands, like ; does"
 # A1 of review-2026-09-17-secrets-guard-ps1.md. The POSIX guard never had to say
 # this: its awk program reads records, and a record is a line. The port was

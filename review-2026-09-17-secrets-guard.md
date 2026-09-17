@@ -35,9 +35,11 @@ Baseline, run before anything was touched:
    masked parts of the probe output during this very pass. `2` denies, `0`
    allows, `124` under `timeout` means the guard was killed. `kb/01-traps.md`
    records the hour this cost once already.
-6. **The installed guard blocks the work of fixing it.** A heredoc whose body
-   contains `env` or `cat .env` is denied (A8) — that is how this pass first met
-   A8. Write case files with an editor, not with a shell heredoc.
+6. ~~**The installed guard blocks the work of fixing it.**~~ A heredoc whose
+   body contains `env` or `cat .env` used to be denied — that is how this pass
+   first met A8. Fixed and re-installed on 2026-09-17; a heredoc writing those
+   three words now goes through. Until the copy on a given machine is updated,
+   write case files with an editor rather than a shell heredoc.
 
 **Invariants — a fix may not break these**, taken from what the project says
 about itself:
@@ -194,6 +196,11 @@ mirror case for the port.
 
 ### A2. `/proc/self/environ` is not matched
 
+**CLOSED 2026-09-17.** `bash tests/test_guard.sh` and `--pwsh`. Widened to
+`/proc/([0-9]+|self|thread-self)/environ` in both hooks; the glob in
+`lib/patch_config.py` already covered it. `docs/design.*.md` names both
+spellings now.
+
 **Class:** silent wrong result — it dumps the current process's environment,
 which is the whole thing this tool exists to stop.
 
@@ -216,6 +223,20 @@ and `$$` are not digits.
 existing `check 2 'cat /proc/1/environ'`.
 
 ### A3. An inline script in any interpreter passes
+
+**CLOSED 2026-09-17.** A pass D in both hooks. The payload has to BE the dump
+command — `(-c|-e|eval)` then, optionally quoted, one of
+`env|printenv|set|declare|typeset|history` and nothing else — which is what
+keeps `bash -c "echo env"` and `sh -c "set -e; make"` working; cases for both
+directions are in the suite. A command substitution whose body is a dump gets
+the same treatment, which closes `$(env)` and `echo $(env)`. For the
+interpreters the test is the idiom (`os.environ`, `process.env`, `%ENV`,
+`ENV.to_h`), because the payload is not shell.
+
+Still uncovered and now written down rather than assumed: an interpreter
+reading a secret file — `python3 -c "print(open('.env').read())"` — has no
+reader anywhere in the command. `docs/design.*.md` says so under "what this
+does not do".
 
 **Class:** silent wrong result.
 
@@ -257,6 +278,11 @@ cure is not worse than the disease.
 
 ### A4. A command name pass A refuses to classify disables the whole sub-command
 
+**CLOSED 2026-09-17.** Leading assignments are skipped token by token rather
+than abandoning the sub-command, a leading backslash is stripped, and the
+basename is taken — the same reading `is_ours` uses. `"env"` stays allowed and
+the reason is in the code, as the item proposed.
+
 **Class:** silent wrong result.
 
 **Where:** lines 49-53. A fragment that does not start with `[a-zA-Z_]`, or that
@@ -287,6 +313,9 @@ stripping the invariants list protects; say so in `docs/design.en.md:60`.
 above except `"env"`, which gets `check 0` with a comment naming the reason.
 
 ### A5. `printenv -0` dumps everything and is allowed
+
+**CLOSED 2026-09-17.** Denied unless an argument is not a flag, the same shape
+`env` already used. `printenv PATH` still works and is pinned.
 
 **Class:** silent wrong result.
 
@@ -395,6 +424,13 @@ kept as it is.
 
 ### A8. A heredoc body is scanned as if it were commands
 
+**CLOSED 2026-09-17.** The bodies are stripped once, before either pass, rather
+than inside the awk program — pass A is shell and has no way to know about
+heredocs, so handling it only in awk left half the item open and the first
+attempt still denied the case. `<<<` is untouched: after the second `<` comes a
+third, which is neither `-`, a space, a quote nor a letter. A real command after
+the terminator is still scanned, and that is a case in the suite.
+
 **Class:** damage.
 
 **Where:** the awk splitter (lines 120-135) knows quotes and separators but not
@@ -489,6 +525,12 @@ finding.
 decision adds to the shell guard.
 
 ### A10. Only `echo` and `printf` count as printing a credential-named variable
+
+**CLOSED 2026-09-17.** A here-string opens the gate on its own: no command reads
+`<<<` without emitting or storing its text, so `cat <<< "$GITHUB_TOKEN"` and
+`tee <<< "$API_KEY"` are denied while `grep foo <<< "$line"` and
+`cat <<< "hello"` are not. `awk -v k="$API_KEY" ...` stays uncovered and is
+named in `docs/design.*.md`, as the item proposed.
 
 **Class:** silent wrong result.
 

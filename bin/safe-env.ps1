@@ -28,7 +28,7 @@ $patterns = @(
     'tvly-[A-Za-z0-9-]{10,}'                            # Tavily
     'AIza[A-Za-z0-9_-]{35}'                             # Google
     '(sk|rk)_live_[A-Za-z0-9]{20,}'                     # Stripe
-    'sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}'          # OpenAI family
+    '(?<![A-Za-z0-9_-])sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}'  # OpenAI family
     'at-[A-Za-z0-9]{30,}'                               # Atlassian
     'ATATT[A-Za-z0-9_=.-]{20,}'                         # Atlassian API token
     'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.'    # JWT

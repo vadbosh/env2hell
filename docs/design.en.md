@@ -89,7 +89,7 @@ Git Bash or WSL shell is handed one spelling one moment and the other the next:
 | `.bashrc`, `.zshrc`, `.profile`, `.netrc` | POSIX |
 | `_netrc` | Windows, where that is what `.netrc` is called |
 | `Microsoft.PowerShell_profile.ps1` | Windows, where `$env:API_KEY = "..."` is written |
-| `/proc/N/environ` | Linux only; no such file elsewhere |
+| `/proc/N/environ`, `/proc/self/environ` | Linux only; no such file elsewhere |
 
 The last two rows are what stops the list being half a list. On Windows the
 PowerShell profile plays the part `.bashrc` plays elsewhere, and a key sits in
@@ -280,3 +280,13 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
   which is what actually happens.
 - It does not rotate anything. Once a key reaches a transcript, the only fix is
   a new key.
+- **The lists for a command run by another command are partial on purpose.**
+  `bash -c env`, `eval env`, `$(env)` and the environment-dumping idiom of
+  Python, Node, Perl and Ruby are denied, because those are what an assistant
+  writes by habit. The test is that the payload IS the dump command, so
+  `bash -c "echo env"` and `sh -c "set -e; make"` keep working — and so does
+  anything that reaches the same place by another route. Parsing an arbitrary
+  program to find out what it does is the sandbox this is not.
+- **Only `echo`, `printf`, `cat` and `tee` count as printing a
+  credential-named variable.** `awk -v k="$API_KEY" …` hands the value to a
+  program, and what that program does with it is not decidable here.

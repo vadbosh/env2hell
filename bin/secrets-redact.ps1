@@ -59,7 +59,7 @@ $patterns = @(
     'tvly-[A-Za-z0-9-]{10,}'
     'AIza[A-Za-z0-9_-]{35}'
     '(sk|rk)_live_[A-Za-z0-9]{20,}'
-    'sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}'
+    '(?<![A-Za-z0-9_-])sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}'
     'at-[A-Za-z0-9]{30,}'
     'ATATT[A-Za-z0-9_=.-]{20,}'
     'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.'

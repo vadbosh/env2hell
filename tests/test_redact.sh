@@ -159,6 +159,11 @@ check_shape keep 'client_secret = var.oidc_application_client_secret' 'a Terrafo
 check_shape keep 'kubectl get secret prometheus-operator -n mon' 'a kebab-case object name'
 check_shape keep 'token = $GITHUB_TOKEN_VALUE'                   'a shell variable, not its value'
 check_shape keep 'private_key = /etc/ssl/private/server.key'     'a path'
+# `sk-` inside a hyphenated name. The boundary has to count `-` as part of a
+# word, because that is what precedes `sk-` here — a plain word boundary
+# changes nothing. review-2026-09-17-safe-env.md item A4; the value is invented.
+check_shape keep 'ANTHROPIC_MODEL=zai-sk-glm-4-6-turbo-preview'  'a model name containing sk-'
+check_shape mask 'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx'    'the same prefix starting a value'
 # A timestamped backup name is fifteen digits and a hyphen — the shape of a
 # secret to anything that scores on length alone, and the shape this project's
 # own installer writes on every patch (%Y%m%d-%H%M%S). It passes today because
@@ -697,7 +702,10 @@ if [ "$PORT" = pwsh ]; then
     strip () { sed -n "/^\\\$patterns = @(/,/^)/p" "$1" | sed 's/[[:space:]]*#.*//; s/^[[:space:]]*//; /^$/d'; }
 else
     peer="$SRC/bin/safe-env"
-    strip () { grep -E '^  RE = ' "$1"; }
+    # SK is in the comparison too: it left RE on 2026-09-17 because it needs a
+    # left boundary, and a pattern that leaves the compared block stops being
+    # compared — which is the drift this test exists to catch.
+    strip () { grep -E '^  (RE|SK) = ' "$1"; }
 fi
 if diff <(strip "$peer") <(strip "$TOOL") >/dev/null 2>&1; then
     ok "tier-1 patterns match ${peer##*/} character for character"

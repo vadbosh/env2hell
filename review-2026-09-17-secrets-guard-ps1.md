@@ -192,6 +192,20 @@ What is arguable:
 
 ## What is NOT a defect (checked, so nobody spends the time again)
 
+- **The corpus earns its place a second time, 2026-09-17.** While A2-A5, A8 and
+  A10 were being ported, a single-token assignment — `ANTHROPIC_MODEL=glm-5.2`,
+  the first such line in the project's own scripts — made the port throw:
+  `$tokens[1..($tokens.Count - 1)]` on a one-element array is `$tokens[1..0]`,
+  which PowerShell reads as a descending range and indexes out of bounds, and
+  `Set-StrictMode` turns that into an exception. `tests/test_guard.sh --pwsh`
+  was green at 135 of 135 because no case there is a bare assignment; the corpus
+  failed on 8 lines. The exit code was 98 — `pwsh_batch.ps1`'s "the hook threw" —
+  which is why that code exists instead of letting a throw read as 0.
+
+  The repair has its own trap: a PowerShell function returning `@()` unrolls it
+  to `$null`, so the next `.Count` throws again. `return ,@()` returns the empty
+  array itself.
+
 - **357 single-line commands, zero divergences.** Provider-prefixed values,
   every dump form, every reader-and-path shape, the credential-name cases, the
   command-substitution cases, and the real command lines out of the project's

@@ -127,6 +127,27 @@ else
     no "leaves a path alone — configuration, not a secret" "the path was masked"
 fi
 
+# `sk-` needs a left boundary, and the boundary has to treat `-` as part of a
+# word: the character before `sk-` in a model name IS a hyphen, so a plain word
+# boundary changes nothing. review-2026-09-17-safe-env.md item A4. All values
+# invented.
+sk="$(MYTEST_MODEL='zai-sk-glm-4-6-turbo-preview' \
+      MYTEST_OPENAI='sk-abcdefghijklmnopqrstuvwx' \
+      MYTEST_ANTHROPIC='sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz' \
+      run_tool 2>/dev/null)"
+if grep -qx 'MYTEST_MODEL=zai-sk-glm-4-6-turbo-preview' <<< "$sk"; then
+    ok "leaves a model name containing sk- alone"
+else
+    no "leaves a model name containing sk- alone" "it was masked"
+fi
+for name in MYTEST_OPENAI MYTEST_ANTHROPIC; do
+    if grep -q "^$name=<REDACTED:" <<< "$sk"; then
+        ok "masks an OpenAI-family key that starts the value"
+    else
+        no "masks an OpenAI-family key that starts the value" "$name reached the output"
+    fi
+done
+
 # Standard base64 is the commonest encoding for a random secret and the one
 # shape none of the generic fallbacks could take: `+`, `/` and `=` sit outside
 # [A-Za-z0-9_-], so any one of them broke every run long enough to match.
