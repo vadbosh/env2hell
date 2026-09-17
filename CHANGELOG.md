@@ -21,9 +21,9 @@
 ## 0.6.0 — 2026-09-17
 
 Four cold reviews — `bin/secrets-guard`, `bin/safe-env` and a parity pass over
-each PowerShell port — and every item they raised. The reviews are in the
-repository as `review-2026-09-17-*.md`; what follows is what changed for someone
-who uses this.
+each PowerShell port — and every item they raised. The reviews are kept
+alongside the checkout as `review-2026-09-17-*.md` rather than committed; what
+follows is what changed for someone who uses this.
 
 The headline is not a pattern. **The guard was failing open**, and it was
 measured rather than guessed: past roughly 520 sub-commands it was killed by its
@@ -139,9 +139,9 @@ that number.
 ## 0.5.3 — 2026-09-16
 
 Three cold reviews — `lib/patch_config.py`, `bin/secrets-redact` and its
-PowerShell port — and the fixes they asked for. The reviews are in the
-repository as `review-2026-09-1*.md`; what follows is what changed for someone
-who uses this.
+PowerShell port — and the fixes they asked for. The reviews are kept
+alongside the checkout as `review-2026-09-1*.md` rather than committed; what
+follows is what changed for someone who uses this.
 
 ### Added
 

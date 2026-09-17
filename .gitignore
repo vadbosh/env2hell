@@ -37,3 +37,9 @@ __pycache__/
 Thumbs.db
 *.swp
 *~
+
+# Audit reviews. They are work orders for whoever fixes the items, written for
+# this machine and this moment — not part of what the project ships. The code
+# and the tests cite them by name where an item explains a decision; those
+# citations point at a file kept alongside the checkout, not inside it.
+review-*.md
