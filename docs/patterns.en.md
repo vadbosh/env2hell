@@ -129,8 +129,11 @@ system, and nobody expects that.
 ## What the guard blocks, by contrast
 
 `safe-env` masks values. `secrets-guard` denies commands — a different list,
-kept in `lib/patch_config.py` (`DUMP_RULES`, `READERS`, `SECRET_FILES`) so that
-the installer and the documentation cannot disagree.
+and it lives in more than one place because the consumers differ. The two hooks
+carry regular expressions; `lib/patch_config.py` and `install.ps1` carry globs,
+which is what Opencode's `permission.bash` takes. They cannot be diffed as text,
+so `tests/test_policy.sh` asks all four the same question instead: a list of
+paths that must be denied and a few that must not.
 
 The files treated as secret stores:
 
@@ -150,6 +153,11 @@ helm/registry/config.json
 
 Either path separator is accepted, so the Windows form of the same store —
 `C:\Users\you\.aws\credentials` — is matched as readily as the Unix one.
+
+Two rows are enforced by Opencode alone. `*credentials*` and `*secrets*` are
+broad enough to be useful as a prompt and wrong as a hard deny: in the hooks
+they would refuse `cat credentials-design.md` and `cat notes-about-secrets.md`.
+Everything else on the list is denied by all four.
 
 Two absences are decisions rather than gaps. `~/.ssh/config` is not on the list:
 it holds hostnames and `IdentityFile` paths, not keys, and denying it would cost

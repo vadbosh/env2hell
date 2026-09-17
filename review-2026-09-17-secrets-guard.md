@@ -639,6 +639,8 @@ oversight.
 
 ### B1. `docs/patterns.en.md:121` says the guard's lists live in `lib/patch_config.py`
 
+**CLOSED 2026-09-17.** The paragraph now says which consumer each list serves — regular expressions in the two hooks, globs in `lib/patch_config.py` and `install.ps1` — and names `tests/test_policy.sh` as the thing that keeps them in step. Both language versions.
+
 The text:
 
 > `safe-env` masks values. `secrets-guard` denies commands — a different list,
@@ -656,6 +658,8 @@ until A9 lands. Both language versions: `docs/patterns.en.md`,
 
 ### B2. The file table in `docs/patterns.en.md:128-133` lists paths the guard never matches
 
+**CLOSED 2026-09-17.** Decided rather than papered over: `*.key` joined both hooks and the policy test, because a `.key` file is a private key and nothing else. `*credentials*` and `*secrets*` stay Opencode-only — as a hard deny they would refuse `cat credentials-design.md`, which is the A7 failure in a new place — and the table now says which engine enforces which row. Both language versions.
+
 `*.key`, `*credentials*` and `*secrets*` appear in the table; the shell guard
 has none of them (reproduced under A9). A reader takes the table as the policy.
 
@@ -664,6 +668,8 @@ way it goes, the table is generated from one of the two lists or annotated per
 row with which engine enforces it. Both language versions.
 
 ### B3. `docs/design.en.md:60` lists the skipped fragment shapes incompletely
+
+**CLOSED 2026-09-17.** Rewritten after A4: the paragraph lists the three things peeled off the first token — a leading assignment, a leading backslash, a directory — and then what is still skipped. `"env"` is named as the one shape in that list that really is a command, with the reason it stays allowed. Both language versions.
 
 The text names fragments starting with `"`, `=`, `{`, `[`, `$` or `*`. The code
 (lines 49-53) also skips anything starting with `/`, `\`, `.` or a digit, and

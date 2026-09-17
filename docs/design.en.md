@@ -57,8 +57,22 @@ Wrappers are stepped over before the name is read, so `sudo env`, `rtk env` and
 sudo rtk env    →  skip sudo, skip rtk, examine env
 ```
 
-A fragment that does not look like a command name at all — one starting with
-`"`, `=`, `{`, `[`, `$` or `*` — is skipped rather than guessed at.
+Three things are peeled off before the first token is read as a command name,
+because each of them used to make the whole sub-command unreadable rather than
+just that token:
+
+- **leading assignments** — `FOO=bar env` sets a variable for `env`, and the
+  `=` is not part of the name
+- **a leading backslash** — `\env` is the ordinary way to bypass an alias
+- **a directory** — `/usr/bin/env` is the ordinary way to bypass `PATH`, and the
+  basename is what names the program
+
+What remains and still does not look like a command name — a fragment starting
+with `"`, `{`, `[`, `$` or `*`, or containing a character outside
+`[A-Za-z0-9_.-]` — is skipped rather than guessed at. `"env"` is the one shape
+in that list that really is a command: pass A works on quote-stripped text, so
+the quotes are gone by the time it is read, and recovering it would mean giving
+up the stripping that keeps a commit message out of the decision.
 
 ### Where the line is drawn
 

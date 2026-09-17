@@ -172,7 +172,7 @@ $readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|s
 $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            '|[/\\][._](bashrc|zshrc|profile|bash_profile|zshenv|zprofile|netrc)' +
            '|id_rsa|id_ed25519|id_ecdsa' +              # private keys
-           '|\.(pem|p12|pfx)([\s"'']|$)' +              # certificates
+           '|\.(pem|p12|pfx|key)([\s"'']|$)' +          # certificates and keys
            '|\.aws[/\\]credentials|\.docker[/\\]config\.json' +
            '|\.kube[/\\]config|\.azure[/\\]' +
            '|\.git-credentials|\.npmrc|\.pypirc|\.pgpass|\.my\.cnf' +

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# tests/test_policy.sh — one policy, three implementations, one list.
+# tests/test_policy.sh — two lists, four implementations, one question each.
 #
 #   bash tests/test_policy.sh
 #
-# The paths treated as credential stores live in three places: SECRET_PATHS in
-# bin/secrets-guard, $secrets in bin/secrets-guard.ps1, and SECRET_FILES in
-# lib/patch_config.py, which becomes Opencode's permission.bash deny rules.
-# The first two are regular expressions and the third is a list of globs, so
-# they cannot be diffed as text. They can be asked the same question.
+# The paths treated as credential stores live in four places: SECRET_PATHS in
+# bin/secrets-guard, $secrets in bin/secrets-guard.ps1, SECRET_FILES in
+# lib/patch_config.py and $SecretFiles in install.ps1 — the last two become
+# Opencode's permission.bash rules. The first two are regular expressions and
+# the others are globs, so they cannot be diffed as text. They can be asked the
+# same question.
+#
+# The credential NAMES are the second such list, in four more places, and the
+# second half of this file asks those.
 #
 # Why this exists: on 2026-09-17 `cat server.key`, `cat credentials.json` and
 # `cat secrets.yaml` were denied by Opencode and allowed by Claude Code and
@@ -54,6 +58,7 @@ deny  ~/.git-credentials
 deny  ~/.ssh/id_rsa
 deny  ~/.ssh/id_ed25519
 deny  ~/server.pem
+deny  ~/server.key
 deny  ~/.config/gh/hosts.yml
 deny  ~/.terraformrc
 deny  ~/.terraform.d/credentials.tfrc.json
@@ -75,6 +80,14 @@ allow ~/README.md
 allow ~/.env.example
 allow ~/docker-compose.yml
 STORES
+# Not in the list above, and that is the decision: `*credentials*` and
+# `*secrets*` are enforced by Opencode alone. As a hard deny in the hooks they
+# would refuse `cat credentials-design.md` and `cat notes-about-secrets.md`,
+# which is the A7 failure in a new place. The table in docs/patterns.md says
+# which engine enforces which row.
+#
+# The reader below takes two fields per line, so a comment inside the heredoc
+# would arrive as a case with `#` for a verb.
 
 # ── the two hooks: ask them ─────────────────────────────────────────────────
 # The port goes through tests/pwsh_batch.ps1 — one pwsh process for the whole
