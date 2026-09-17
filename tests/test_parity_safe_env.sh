@@ -144,7 +144,8 @@ fi
 
 # A multi-line value cannot live in the table above, and it is the one shape
 # where the implementations are known to differ — bin/safe-env reads lines, the
-# port reads variables. review-2026-09-17-safe-env.md item A1.
+# port reads variables — a value with a newline used to lose everything after
+# its first line on the POSIX side.
 key_body='MIIEpAIBAAKCAQEAxGZlbGxvd3NoaXBvZnRoZXJpbmdvbmU'
 multi="-----BEGIN RSA PRIVATE KEY-----
 $key_body
@@ -167,7 +168,7 @@ if [ "$posix_leaks" = "$pwsh_leaks" ]; then
     ok "a multi-line value is treated the same by both (body printed: $posix_leaks)"
 else
     no "a multi-line value is treated the same by both" \
-       "the body is printed by posix=$posix_leaks pwsh=$pwsh_leaks — review-2026-09-17-safe-env.md A1"
+       "the body is printed by posix=$posix_leaks pwsh=$pwsh_leaks — one of them is reading lines where the other reads variables"
 fi
 
 printf '\npassed %d, failed %d\n' "$pass" "$fail"

@@ -16,7 +16,6 @@
 # Why this exists: on 2026-09-17 `cat server.key`, `cat credentials.json` and
 # `cat secrets.yaml` were denied by Opencode and allowed by Claude Code and
 # Codex, on the same machine, with nothing anywhere saying the two differed.
-# review-2026-09-17-secrets-guard.md items A9 and A11.
 #
 # The list below is the policy. Adding a store means adding one line here and
 # then making all three sides agree.

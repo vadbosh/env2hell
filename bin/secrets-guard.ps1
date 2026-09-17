@@ -77,7 +77,6 @@ if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
 # guard not doing its job, and a PreToolUse hook killed at the runner's timeout
 # does not deny. The limit is a count rather than a clock, so it answers the
 # same on every machine and needs nothing that has to be installed.
-# review-2026-09-17-secrets-guard.md item D1.
 $GuardMaxSubs = 50000
 $subCount = 0
 foreach ($line in ($command -split '\r?\n')) {
@@ -195,7 +194,6 @@ $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            '|Microsoft\.PowerShell_profile\.ps1' +      # where $env:KEY is set
            # The stores of the tools a developer has open on the same day. Each
            # held a live token and printed it on request until 2026-09-17.
-           # review-2026-09-17-secrets-guard.md item A11.
            '|[/\\]gh[/\\]hosts\.yml' +                  # gh, a token in plain text
            '|\.terraformrc|terraform\.rc|credentials\.tfrc\.json' +
            '|[/\\]gcloud[/\\](credentials\.db|access_tokens\.db' +

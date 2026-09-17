@@ -25,7 +25,7 @@ ENV_BIN=/usr/bin/env
 # any kind. A private key in a variable came out as a masked header followed by
 # its own body, and the number in the mask was the length of the header line.
 # The PowerShell port never had this — it iterates variables, not lines — and
-# the fix is copied from it. review-2026-09-17-safe-env.md item A1.
+# the fix is copied from it.
 #
 # Both awks on this machine take a NUL record separator (gawk 5.3.2, mawk
 # 1.3.4); tests/test_safe_env.sh has a multi-line case, so an awk that cannot

@@ -212,7 +212,7 @@ check 2 'echo "${db_password}"'
 
 echo
 echo "allowed — a credential name has to be a whole component, not a substring"
-# A6 of review-2026-09-17-secrets-guard.md. The first line below is this file's
+# The first line below is this file's
 # own summary line: matched as a substring, PASS denied the test harness
 # reporting its results. PASS needs a neighbouring component to count, because
 # on its own the word is a counter as often as a credential.
@@ -320,7 +320,7 @@ check 2 $'cat > /tmp/c.txt <<EOF\nhello\nEOF\nenv'
 
 echo
 echo "multi-line — a newline separates sub-commands, like ; does"
-# A1 of review-2026-09-17-secrets-guard-ps1.md. The POSIX guard never had to say
+# The POSIX guard never had to say
 # this: its awk program reads records, and a record is a line. The port was
 # written from the separator list alone, so every case below diverged — in both
 # directions. A label is passed because a command with a newline in it does not
@@ -338,7 +338,7 @@ check 0 $'git commit -m "docs: cat .env ends the same way"\nhead -5 CHANGELOG.md
 
 echo
 echo "size — the guard has to finish inside its own hook timeout"
-# A1 of review-2026-09-17-secrets-guard.md. The cost used to be per
+# The cost used to be per
 # sub-command, with two forks each, so a heredoc of 550 lines outlived
 # "timeout": 5 — and a PreToolUse hook killed at its timeout does not deny, it
 # lets the call through with nothing said. Exit 124 below is that failure, and

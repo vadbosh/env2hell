@@ -217,7 +217,7 @@ check_shape keep 'token = $GITHUB_TOKEN_VALUE'                   'a shell variab
 check_shape keep 'private_key = /etc/ssl/private/server.key'     'a path'
 # `sk-` inside a hyphenated name. The boundary has to count `-` as part of a
 # word, because that is what precedes `sk-` here — a plain word boundary
-# changes nothing. review-2026-09-17-safe-env.md item A4; the value is invented.
+# changes nothing. The value is invented.
 check_shape keep 'ANTHROPIC_MODEL=zai-sk-glm-4-6-turbo-preview'  'a model name containing sk-'
 check_shape mask 'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx'    'the same prefix starting a value'
 # A timestamped backup name is fifteen digits and a hyphen — the shape of a

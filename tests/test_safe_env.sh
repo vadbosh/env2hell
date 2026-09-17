@@ -129,8 +129,7 @@ fi
 
 # `sk-` needs a left boundary, and the boundary has to treat `-` as part of a
 # word: the character before `sk-` in a model name IS a hyphen, so a plain word
-# boundary changes nothing. review-2026-09-17-safe-env.md item A4. All values
-# invented.
+# boundary changes nothing. All values invented.
 sk="$(MYTEST_MODEL='zai-sk-glm-4-6-turbo-preview' \
       MYTEST_OPENAI='sk-abcdefghijklmnopqrstuvwx' \
       MYTEST_ANTHROPIC='sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz' \
@@ -151,7 +150,7 @@ done
 # Standard base64 is the commonest encoding for a random secret and the one
 # shape none of the generic fallbacks could take: `+`, `/` and `=` sit outside
 # [A-Za-z0-9_-], so any one of them broke every run long enough to match.
-# review-2026-09-17-safe-env.md item A2. All values invented.
+# All values invented.
 b64="$(MYTEST_B64PLUS='QWxhZGRpbjpvcGVuIHNlc2FtZQ+abcdefghij/klmnopqrst=' \
        MYTEST_B64PAD='QWxhZGRpbjpvcGVuc2VzYW1lMTIzNDU2Nzg5MGFiY2RlZg==' \
        MYTEST_ABSPATH='/usr/local/share/very/long/directory/path/name/here' \
@@ -172,7 +171,8 @@ fi
 
 # A Windows path is configuration too, and a Git Bash or WSL shell is handed one
 # routinely. The port excluded these and the POSIX side did not — found by
-# tests/test_parity_safe_env.sh, review-2026-09-17-safe-env-ps1.md item A1.
+# tests/test_parity_safe_env.sh, which compares the two implementations on a
+# table of planted values rather than on a case list.
 winpath="$(MYTEST_TOKEN_WIN='C:/Users/me/token' \
            MYTEST_TOKEN_BS='C:\Users\me\token' \
            MYTEST_TOKEN_REL='./secrets/token' \
@@ -200,7 +200,7 @@ fi
 # The worst defect this file has carried: a value with a newline in it used to
 # be read as several records, and everything after the first line was printed
 # verbatim. A private key came out as a masked header followed by its own body.
-# review-2026-09-17-safe-env.md item A1. The body below is invented.
+# The body below is invented.
 key_body='MIIEpAIBAAKCAQEAxGZlbGxvd3NoaXBvZnRoZXJpbmdvbmU'
 key_value="-----BEGIN RSA PRIVATE KEY-----
 $key_body

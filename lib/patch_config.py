@@ -79,9 +79,12 @@ REDACT_TIMEOUT = 60
 # each — and a heredoc contributes one sub-command per line of its body. At
 # five seconds the guard was killed at roughly 520 sub-commands, and a killed
 # PreToolUse hook does not deny: the command runs unguarded, silently.
-# Measured 2026-09-17, review-2026-09-17-secrets-guard.md item A1. Thirty
-# seconds moves that threshold to roughly 3100. It does not fix the shape;
-# A1 does.
+# Measured 2026-09-17, before the two shell loops became one awk program.
+# Thirty seconds moved the threshold from roughly 520 sub-commands to 3100
+# while that was still the shape. Both are history now: the guard denies by
+# a count of its own (GUARD_MAX_SUBS in bin/secrets-guard) long before this
+# timeout can be reached. The number stays generous because the cost is the
+# assistant's own wall clock, and nothing is gained by cutting it fine.
 GUARD_TIMEOUT = 30
 
 # How many timestamped backups of one configuration file to keep. Every changing
