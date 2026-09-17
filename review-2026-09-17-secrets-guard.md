@@ -71,9 +71,11 @@ A2–A5, A9, A10 are pattern work in one place each.
    replaces.
 3. **A2, A3, A4, A5** — pattern and tokenizer work in pass A / `SECRET_PATHS`.
    Independent of each other; each is one case plus one line.
-4. **A9** — policy drift. Do it last of the A items: it is the one that changes
-   two files and needs a test that diffs them, and steps 1–3 will have moved
-   both lists.
+4. **A9 with A11** — policy drift and the missing stores, together and last of
+   the A items. A9 is the one that changes two files and needs a test that
+   diffs them; A11 is fourteen entries added to the same two lists. Adding the
+   entries before the test exists means adding them twice by hand, so the test
+   goes first and the entries go through it.
 5. **A8, A10** — independent of everything above.
 
 **Exposure schedule.** A1 is the worst item and it is second, not first, because
@@ -455,6 +457,69 @@ of an arbitrary program is not decidable, and the invariant says so.
 `check 2 'tee <<< "$API_KEY"'`; keep `check 0` for `grep TOKEN file` so the
 widened gate does not start denying reads.
 
+### A11. The credential stores of fourteen everyday tools are not in the list
+
+**Class:** silent wrong result — reading one of these prints live tokens, and
+the guard says nothing.
+
+**Where:** `SECRET_PATHS`, lines 90-103. The list names the stores of the tools
+it names and stops there; nothing in it is a general rule, so a tool absent from
+it is a tool whose credentials print.
+
+**Reproduction** — twenty stores through the guard, verdict from exit status:
+
+    cat ~/.config/gh/hosts.yml                        → pass(0)
+    cat ~/.terraformrc                                → pass(0)
+    cat ~/.terraform.d/credentials.tfrc.json          → pass(0)
+    cat ~/.config/gcloud/application_default_credentials.json → pass(0)
+    cat ~/.config/gcloud/credentials.db               → pass(0)
+    cat ~/.cargo/credentials.toml                     → pass(0)
+    cat ~/.gem/credentials                            → pass(0)
+    cat ~/.m2/settings.xml                            → pass(0)
+    cat ~/.config/hub                                 → pass(0)
+    cat ~/.config/rclone/rclone.conf                  → pass(0)
+    cat ~/.rclone.conf                                → pass(0)
+    cat ~/.vault-token                                → pass(0)
+    cat ~/.config/containers/auth.json                → pass(0)
+    cat ~/.databrickscfg                              → pass(0)
+    cat ~/.snowflake/config                           → pass(0)
+    cat ~/.config/helm/registry/config.json           → pass(0)
+
+    head ~/.aws/credentials                           → BLOCK
+    cat ~/.docker/config.json                         → BLOCK
+    cat ~/.kube/config                                → BLOCK
+    cat ~/.netrc                                      → BLOCK
+
+`~/.config/gh/hosts.yml` is the sharpest of them on this machine: `gh` is
+installed and the file holds a GitHub token in plain text, and
+`~/.claude/rules/mcp-native-alternatives.md` tells the assistant to reach for
+`gh` in place of a disabled MCP server, so the tool is in daily use.
+
+**Fix:** add the stores above. Two of them need care rather than a line.
+`~/.ssh/config` is deliberately **not** on the list — it holds hostnames and
+`IdentityFile` paths, not keys, and denying it would break ordinary work for no
+gain; say so in the comment beside the block. `~/.m2/settings.xml` and
+`~/.config/helm/registry/config.json` are ordinary configuration files that
+*may* hold a password, so they belong on Opencode's `ask` tier rather than a
+hard deny if that distinction is kept — see A9, which is the same decision for
+a different reason.
+
+Do not try to replace the list with a general rule. A pattern like
+`*/credentials*` was considered and is what `lib/patch_config.py` already uses
+for Opencode; on the hook side it would deny `git log -- credentials.md` and
+`cat credentials-design.txt`, which is the A7 failure in a new place.
+
+**Touches:** `bin/secrets-guard`, `bin/secrets-guard.ps1` (the Windows spellings
+of the same stores — `%USERPROFILE%\.config\gh\hosts.yml`, `%APPDATA%\gcloud\`),
+`SECRET_FILES` in `lib/patch_config.py`, and the file table in
+`docs/patterns.en.md` / `docs/patterns.ru.md`. This is the list A9 proposes a
+drift test for; adding entries before that test exists means adding them twice
+by hand.
+
+**Test:** in the pass B group, one `check 2` per store above, plus `check 0` for
+`cat ~/.ssh/config` so the exclusion is pinned as a decision rather than an
+oversight.
+
 ---
 
 ## B. Documentation disagrees with the code
@@ -599,6 +664,17 @@ What is arguable:
   PostToolUse matcher is `Bash|Read|Grep` (`README.md:252`).
 - **Fail-open on a missing `jq` or a non-JSON payload** is the documented
   contract, not an oversight (`docs/design.en.md` § "Failing open").
+- **The stores the list does name are genuinely covered.** `~/.aws/credentials`,
+  `~/.docker/config.json`, `~/.kube/config`, `~/.azure/`, `~/.netrc`, `~/.pgpass`
+  and `~/.npmrc` are all denied, in both the Unix and the backslashed spelling.
+  A11 is about the tools absent from the list, not about these.
+- **The installed copy is the repository copy.** `diff -q bin/secrets-guard
+  ~/.local/bin/secrets-guard` is silent, and the repository has a remote
+  (`origin`), so the guard is not a single unbacked file on this machine. It is
+  not distributed by `~/ai-config-source` and does not need to be: `install.sh`
+  is its installer, and `~/.local/bin/env2hell-update` is the local wrapper that
+  runs it. Only the rule *text* (`rules/secrets-hygiene.md`) belongs to that
+  canon, deliberately — the wrapper's own comment says why.
 
 **One item could not be verified here.** Under `set -u`, bash before 4.4 treats
 `"${rest[@]}"` on an empty array as an unbound variable and exits — which would
@@ -643,6 +719,9 @@ chain would read that as failure:
     A8  g "$(printf 'cat > /tmp/x <<EOF\nenv\nEOF\n')"  # 0
     A9  the list-diff test                      # exit 0
     A10 g 'cat <<< "$GITHUB_TOKEN"'             # 2
+    A11 g 'cat ~/.config/gh/hosts.yml'          # 2
+        g 'cat ~/.terraformrc'                  # 2
+        g 'cat ~/.ssh/config'                   # 0, on purpose
 
 - every A item has a case in `tests/test_guard.sh` that failed before the fix
   and passes after, in both the POSIX and `--pwsh` runs
