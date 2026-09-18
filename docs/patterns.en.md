@@ -203,18 +203,17 @@ Either path separator is accepted, so the Windows form of the same store —
 
 **`.env` on the first row is not a glob, unlike every one of its neighbours.**
 The hooks need a boundary on its left — a space, a quote, a slash or an `=`. So
-`cat .env`, `cat /srv/app/.env`, `cat .env.local` and `cat .env.production` are
-denied, while `cat prod.env`, `cat secrets.env` and `head config/production.env`
-go through. The boundary is not an oversight: without it the guard denied
-`jq -r '.permission.bash.env' opencode.json | head`, where `.env` is part of a
-config key rather than a filename (`docs/design.en.md`).
+`cat .env`, `cat /srv/app/.env`, `cat .env.local` are denied, and since 0.7.0 so
+are `cat prod.env` and `head config/production.env`: a filename ending in `.env`
+counts as a store when the component before `.env` holds no dot. That condition
+is what separates a filename from a config key — in
+`jq -r '.permission.bash.env' opencode.json | head` the character before `bash`
+is a dot, and the command passes (`docs/design.en.md`).
 
-**Here too the implementations answer differently.** Opencode takes its rules
-from `SECRET_FILES` in `lib/patch_config.py`, and that list carries a real glob
-`*.env` — so Opencode denies `cat prod.env` and both hooks allow it. The split
-was measured, not inferred: `tests/test_policy.sh` reports it as soon as
-`prod.env` is added to the shared list. Until it is resolved, treat only a file
-named `.env` as covered.
+Before 0.7.0 the implementations disagreed here: Opencode's `SECRET_FILES`
+carried a real `*.env` glob while both hooks required the left boundary, so
+Opencode denied `cat prod.env` and the hooks allowed it. All four deny it now,
+and `tests/test_policy.sh` holds them to it.
 
 Two rows are enforced by Opencode alone. `*credentials*` and `*secrets*` are
 broad enough to be useful as a prompt and wrong as a hard deny: in the hooks
@@ -230,8 +229,12 @@ thing anybody does in an unfamiliar repository. Both are pinned by
 `tests/test_policy.sh`, which asks all four implementations the same question,
 so neither can be added back by tidiness.
 
-Reading one of these with `cat`, `head`, `tail`, `less`, `strings`, or with
-PowerShell's `type` and `gc`, is denied. Listing them, moving them or checking
+Reading one of these is denied — with a pager that prints the whole file (`cat`,
+`bat`, `tac`, `nl`, `head`, `tail`, `less`, `more`, `view`, `od`, `xxd`,
+`strings`, `type`, `gc`) and with an extractor that takes a part (`grep`, `rg`,
+`sed`, `awk`, `sort`, `uniq`, `cut`, `rev`, `jq`, `yq` and their relatives). An
+in-place edit (`sed -i`) is not a read, and the first quoted argument of a
+grep-like command is the search pattern rather than a path. Listing them, moving them or checking
 that they exist is not — the guard is about printing content, not about the
 files themselves.
 

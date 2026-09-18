@@ -128,6 +128,28 @@ check 2 'cat C:\Users\me\_netrc'
 check 2 'type C:\Users\me\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1'
 
 echo
+echo "denied — a store read with an extracting reader, not a pager"
+# Until 0.7.0 the reader list was pagers only, so `grep . ~/.aws/credentials`
+# printed the file and the guard said nothing — while the standing rules on the
+# machine tell an assistant to reach for grep/rg when reading file content.
+check 2 'grep . ~/.aws/credentials'
+check 2 'grep KEY "$HOME/.env"'
+check 2 'rg TOKEN ~/.env'
+check 2 "sed -n '1,5p' ~/.env"
+check 2 'awk -F= "{print \$2}" ~/.env'
+check 2 'sort ~/.env'
+check 2 'uniq ~/.env'
+check 2 'cut -d= -f2 ~/.env'
+check 2 'rev ~/.env'
+check 2 'jq -r .token ~/.docker/config.json'
+
+echo
+echo "denied — a store named <something>.env, not just a bare .env"
+check 2 'cat prod.env'
+check 2 'head config/production.env'
+check 2 'grep KEY secrets.env'
+
+echo
 echo "allowed — one variable, or an ordinary command"
 check 0 'echo hi'
 check 0 'printenv PATH'
@@ -138,6 +160,18 @@ check 0 'echo "$ANTHROPIC_MODEL"'
 check 0 'safe-env'
 check 0 'safe-env | grep MODEL'
 check 0 'cat README.md'
+# An extracting reader that reads something else, and the two shapes that must
+# not be mistaken for a read of a store.
+check 0 'grep foo README.md'
+check 0 'sort /etc/hostname'
+check 0 'sed -i "s/a/b/" ~/.env'
+check 0 'sed -i.bak "s/a/b/" ~/.bashrc'
+# The first quoted argument of a grep-like command is the pattern, not a path.
+check 0 'grep -rn "cat .env" docs/'
+check 0 "sed -n '/cat .env/p' notes.txt"
+check 0 'rg "\.env" docs/'
+# `prod.env.example` is a template, like `.env.example`.
+check 0 'cat prod.env.example'
 check 0 'head -20 install.sh'
 check 0 'env VAR=1 mycommand'
 check 0 'set -e'

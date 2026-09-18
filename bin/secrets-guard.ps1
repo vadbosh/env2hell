@@ -179,12 +179,44 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
 # text; the path may legitimately be quoted, so it is looked for in the raw one.
 # That split keeps prose out of the decision: a commit message containing the
 # words `cat .env` is an argument, not a command.
+
+function Remove-FirstQuotedArgument([string]$text) {
+    $out = New-Object System.Text.StringBuilder
+    $inq = ''
+    $dropped = $false
+    for ($i = 0; $i -lt $text.Length; $i++) {
+        $c = $text[$i]
+        if ($inq -eq '') {
+            if (($c -eq '"' -or $c -eq "'") -and -not $dropped) {
+                $pre = $text.Substring(0, $i)
+                # @() so a single token still has .Count — PowerShell unrolls
+                # a one-element pipeline result into a bare string otherwise.
+                $tokens = @($pre -split '\s+' | Where-Object { $_ -ne '' })
+                $onlyFlags = $true
+                for ($j = 1; $j -lt $tokens.Count; $j++) {
+                    if (-not $tokens[$j].StartsWith('-')) { $onlyFlags = $false }
+                }
+                if ($onlyFlags) { $inq = $c; $dropped = $true; continue }
+            }
+            [void]$out.Append($c)
+        } elseif ($c -eq $inq) { $inq = '' }
+    }
+    return $out.ToString()
+}
+
 $readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|strings|type|gc|get-content)([\s]|$)'
+
+# The extracting readers, kept apart because one of them is not always a read:
+# `sed -i` and `awk -i inplace` write the file and print nothing. The POSIX
+# guard carries the same two lists and the same exception.
+$extractors = '(^|[\s;|&(])(grep|egrep|fgrep|rg|ag|ack|sed|awk|gawk|mawk|sort|uniq|cut|rev|column|jq|yq|select-string)([\s]|$)'
+$inplace = '(^|\s)(-i([^\s]*)?|--in-place([^\s]*)?|inplace)(\s|$)'
 
 # Kept identical to the POSIX version, store for store. Both path separators are
 # accepted everywhere: a Windows path uses a backslash, and a Git Bash or WSL
 # shell is routinely handed the other spelling.
 $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
+           '|(^|[\s"''/=])[A-Za-z0-9_-]+\.env([.\s"'']|$)' +   # prod.env, config/production.env
            '|[/\\][._](bashrc|zshrc|profile|bash_profile|zshenv|zprofile|netrc)' +
            '|id_rsa|id_ed25519|id_ecdsa' +              # private keys
            '|\.(pem|p12|pfx|key)([\s"'']|$)' +          # certificates and keys
@@ -280,7 +312,17 @@ foreach ($rawSub in $rawSubs) {
     # a quoted program.
     $subScan = $rawSub -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
     $pathScan = $rawSub -replace $envTemplates, '.TPLFILE'
-    if ($subScan -match $readers -and $pathScan -match $secrets) {
+    $reads = $subScan -match $readers
+    $pathForStore = $pathScan
+    if (-not $reads -and ($subScan -match $extractors) -and -not ($rawSub -match $inplace)) {
+        $reads = $true
+        # The first quoted span of a grep-like command is the pattern, not a
+        # path: `grep -rn "cat .env" docs/` searches for the words. Dropped only
+        # when nothing but flags precedes it, so `grep KEY "$HOME/.env"` keeps
+        # its path.
+        $pathForStore = Remove-FirstQuotedArgument $pathScan
+    }
+    if ($reads -and $pathForStore -match $secrets) {
         Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
     }
 }

@@ -174,7 +174,14 @@ DUMP_RULES = {
 }
 
 READERS = ["cat", "head", "tail", "less", "more", "strings",
-           "xxd", "od", "nl", "tac", "bat", "batcat"]
+           "xxd", "od", "nl", "tac", "bat", "batcat",
+           # The extracting readers, added in 0.7.0 with the two guards: `grep .
+           # ~/.aws/credentials` printed the file and was allowed everywhere.
+           # `sed` and `awk` are here as readers; their in-place forms write
+           # rather than print, and a glob rule cannot tell the two apart — the
+           # hooks make that distinction, Opencode's prefix rules cannot.
+           "grep", "egrep", "fgrep", "rg", "ag", "ack", "sed", "awk", "gawk",
+           "mawk", "sort", "uniq", "cut", "rev", "column", "jq", "yq"]
 
 SECRET_FILES = [
     "*.env", "*.env.*", "*/.env", "*.pem", "*.key", "*.p12", "*.pfx",

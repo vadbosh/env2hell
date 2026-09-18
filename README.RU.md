@@ -56,6 +56,7 @@ env                     printenv                export -p
 set                     declare                 history
 env | grep KEY          rtk env                 ls && env
 cat .env                head ~/.bashrc          cat /proc/1/environ
+cat prod.env            grep . ~/.aws/credentials
 cat ~/.ssh/id_rsa       head ~/.aws/credentials
 ```
 

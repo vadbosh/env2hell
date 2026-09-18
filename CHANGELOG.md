@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.7.0 — 2026-09-18
+
+Behaviour change in all four implementations: the guard denies more than it did.
+Both items come from `review-2026-09-18-design-docs.md` and
+`review-2026-09-18-patterns-docs.md`.
+
+### Fixed
+
+- **The reader list was pagers only, so `grep` read a store freely.** `cat`,
+  `less`, `xxd` and eleven more were denied; `grep . ~/.aws/credentials`,
+  `sed -n 1,5p ~/.env`, `awk '{print}' ~/.env`, `sort`, `uniq`, `cut` and `rev`
+  printed the file and the guard said nothing. The standing rules on a machine
+  like this one tell an assistant to reach for `rg`/`grep` when it needs file
+  content, so the one open path was also the recommended one. Seventeen
+  extracting readers are denied now, in the two hooks, in the PowerShell port
+  and in the Opencode rules.
+
+  Two qualifications keep ordinary work working, and both are tested: an
+  in-place edit is not a read (`sed -i`, `sed -i.bak`, `awk -i inplace`), and
+  the first quoted argument of a grep-like command is its search pattern, not a
+  path — `grep -rn "cat .env" docs/` searches for the words, while
+  `grep KEY "$HOME/.env"` is denied, because there the quoted span is a path and
+  an unquoted pattern precedes it.
+
+- **A file named `prod.env` was not a store.** Only a bare `.env` was denied,
+  while the documented list said `*.env` — and Opencode, whose rules are globs,
+  denied it all along. All four implementations now deny a filename ending in
+  `.env` when the component before it holds no dot. That condition is what keeps
+  `jq -r '.permission.bash.env' opencode.json | head` working: there the
+  character before `bash` is a dot, and the token is a config key rather than a
+  filename.
+
+### Documentation
+
+- Both pages list the readers in full, in two kinds — pagers and extractors —
+  with the two qualifications named.
+- `docs/design.*` gained `*.key` and `<name>.env` in the store table, a pointer
+  to the third masking tier in `docs/patterns.*`, and one more entry under what
+  this does not do: an interpreter reads anything, and closing that would mean
+  parsing arbitrary code.
+- The `*.env` split between implementations is gone, so both pages describe one
+  behaviour again.
+
+### Tests
+
+- `tests/test_guard.sh`: 138 → 159 cases. Ten denied reads through extractors,
+  three denied `<name>.env` spellings, and eight that must keep passing —
+  including `grep -rn "cat .env" docs/`, `sed -i`, and `cat prod.env.example`.
+  Both implementations run the same set: `--pwsh` reports the same 159.
+
 ## 0.6.4 — 2026-09-18
 
 ### Documentation

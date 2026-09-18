@@ -87,16 +87,37 @@ giving up the stripping that keeps a commit message out of the decision.
 
 ## Pass B — files that hold credentials
 
-Pass B requires two things at once: a reading command (`cat`, `head`, `tail`,
-`less`, `strings`, and PowerShell's `type` and `gc`) and a path that looks like
+Pass B requires two things at once: a reading command and a path that looks like
 a secret store.
+
+Reading commands come in two kinds. **Pagers** print the whole file: `cat`,
+`bat`, `batcat`, `tac`, `nl`, `head`, `tail`, `less`, `more`, `view`, `od`,
+`xxd`, `strings`, plus PowerShell's `type` and `gc`. **Extractors** take a part
+of it: `grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack`, `sed`, `awk`, `gawk`,
+`mawk`, `sort`, `uniq`, `cut`, `rev`, `column`, `jq`, `yq`.
+
+The second list arrived in 0.7.0, and before it `grep . ~/.aws/credentials`
+printed the file while the guard said nothing. A pager is how a file gets read
+whole; a part of a file is read with an extractor, and the standing rules on
+this machine tell an assistant to prefer `rg` or `grep`. The open path was the
+recommended one.
+
+Extractors carry two qualifications, without which they would deny ordinary
+work:
+
+- **an in-place edit is not a read.** `sed -i`, `sed -i.bak` and
+  `awk -i inplace` write the file and print nothing;
+- **the first quoted argument is the search pattern, not a path.**
+  `grep -rn "cat .env" docs/` searches for the words and must stay allowed. That
+  span is dropped only when nothing but flags precedes it, so
+  `grep KEY "$HOME/.env"` is still denied.
 
 One list covers every system, and either path separator is accepted, because a
 Git Bash or WSL shell is handed one spelling one moment and the other the next:
 
 | What | Where |
 |---|---|
-| `.env`, `*.pem`, `*.p12`, `*.pfx` | everywhere |
+| `.env`, `<name>.env`, `*.pem`, `*.key`, `*.p12`, `*.pfx` | everywhere |
 | `id_rsa`, `id_ed25519`, `id_ecdsa` | everywhere |
 | `.aws/credentials`, `.kube/config`, `.docker/config.json`, `.azure/` | everywhere, backslashed on Windows |
 | `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.my.cnf` | everywhere |
@@ -129,6 +150,10 @@ git commit -m "docs: cat .env ends the same way"
 — contains a reader and a secret path, and an earlier version denied it. The
 words are an argument, not a command; stripping the quotes removes them before
 the reader is ever found.
+
+A file named `prod.env` or `config/production.env` is denied too — the component
+before `.env` may not contain a dot. That is what separates a filename from a
+config key: in `'.permission.bash.env'` the character before `bash` is a dot.
 
 The `.env` pattern needs a boundary on its left, or it fires on ordinary text.
 A real example from this repository's own development:
@@ -198,7 +223,10 @@ stops being silent: the model is told the value is compromised, which is what
 starts a rotation. Finding out now beats finding out never, and Codex keeps the
 guard either way.
 
-Two tiers decide what to mask:
+Two tiers decide what to mask — and in `safe-env` there are three: a third one
+decides by the **name** of the variable, documented in
+[`patterns.en.md`](patterns.en.md). The label on the line, below, plays the part
+for `secrets-redact` that the name plays for `safe-env`.
 
 **Tier 1, provider shapes.** `ghp_`, `glpat-`, `AKIA`, a JWT, a private key
 header, credentials inside a URL. These are unambiguous, so they are masked
@@ -305,6 +333,10 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
   `bash -c "echo env"` and `sh -c "set -e; make"` keep working — and so does
   anything that reaches the same place by another route. Parsing an arbitrary
   program to find out what it does is the sandbox this is not.
+- **An interpreter will read anything.** `python3 -c 'print(open(".env").read())'`,
+  `perl -pe '' .env` and any three-line program print a store and pass. The
+  payload there is arbitrary code, and parsing it would mean building the
+  sandbox this is not. The reader lists above close a habit, not an intent.
 - **Only `echo`, `printf`, `cat` and `tee` count as printing a
   credential-named variable.** `awk -v k="$API_KEY" …` hands the value to a
   program, and what that program does with it is not decidable here.
