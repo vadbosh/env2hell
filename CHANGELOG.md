@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0 — 2026-09-18
+
+### Fixed
+
+- **A store read inside `$( … )` was invisible to every pass.**
+  `echo "$(cat ~/.env)"` printed the file: the splitter cuts on `;`, `&` and `|`
+  outside quotes, so that whole thing is one sub-command, and its reader sits in
+  a span that pass B strips before it looks. Each substitution body is now
+  checked as a command of its own and then collapsed to `CMDSUB` — the loop pass
+  C has used for the credential-name rule since 0.6.0, applied to the store
+  rule. `review-2026-09-18-secrets-guard.md`, item A13.
+
+  Ordinary substitutions keep working: `echo "$(date +%F)"`,
+  `echo "$(git rev-parse HEAD)"` and `rg "$(cat README.md | head -1)" docs/` are
+  allowed, because what they read is not a store.
+
+### Tests
+
+- `tests/test_guard.sh`: 171 → 178. Four denied substitutions, three allowed
+  ones. Both implementations report 178.
+
 ## 0.7.1 — 2026-09-18
 
 ### Fixed

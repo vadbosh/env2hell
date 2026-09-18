@@ -180,6 +180,24 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
 # That split keeps prose out of the decision: a commit message containing the
 # words `cat .env` is an argument, not a command.
 
+
+function Test-StoreRead([string]$rawSub) {
+    $subScan = $rawSub -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
+    $pathScan = $rawSub -replace $script:envTemplates, '.TPLFILE'
+    $reads = $subScan -match $script:readers
+    $pathForStore = $pathScan
+    $edit = (($rawSub -match $script:inplaceCmd) -and ($rawSub -match $script:inplaceFlag)) -or ($rawSub -match $script:awkInplace)
+    if (-not $reads -and ($subScan -match $script:extractors) -and -not $edit) {
+        $reads = $true
+        # The first quoted span of a grep-like command is the pattern, not a
+        # path: `grep -rn "cat .env" docs/` searches for the words. Dropped only
+        # when nothing but flags precedes it, so `grep KEY "$HOME/.env"` keeps
+        # its path.
+        $pathForStore = Remove-FirstQuotedArgument $pathScan
+    }
+    return ($reads -and $pathForStore -match $script:secrets)
+}
+
 function Remove-FirstQuotedArgument([string]$text) {
     $out = New-Object System.Text.StringBuilder
     $inq = ''
@@ -320,20 +338,19 @@ foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
     # Same stripping as pass A: the reader must be a command, not a word inside
     # a quoted program.
-    $subScan = $rawSub -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
-    $pathScan = $rawSub -replace $envTemplates, '.TPLFILE'
-    $reads = $subScan -match $readers
-    $pathForStore = $pathScan
-    $edit = (($rawSub -match $inplaceCmd) -and ($rawSub -match $inplaceFlag)) -or ($rawSub -match $awkInplace)
-    if (-not $reads -and ($subScan -match $extractors) -and -not $edit) {
-        $reads = $true
-        # The first quoted span of a grep-like command is the pattern, not a
-        # path: `grep -rn "cat .env" docs/` searches for the words. Dropped only
-        # when nothing but flags precedes it, so `grep KEY "$HOME/.env"` keeps
-        # its path.
-        $pathForStore = Remove-FirstQuotedArgument $pathScan
+    # A command substitution runs a command of its own, and the splitter does
+    # not cut inside quotes — so `echo "$(cat ~/.env)"` arrives as one
+    # sub-command whose reader sits in a stripped span. Each body is tested on
+    # its own first. The POSIX guard does the same.
+    $inner = $rawSub
+    while ($inner -match '\$\(([^()]*)\)') {
+        $body = $Matches[1]
+        if (Test-StoreRead $body) {
+            Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
+        }
+        $inner = $inner -replace [regex]::Escape($Matches[0]), 'CMDSUB'
     }
-    if ($reads -and $pathForStore -match $secrets) {
+    if (Test-StoreRead $rawSub) {
         Deny '[secrets-guard] Blocked: that file can contain secrets. Read the one non-secret line you need, or use safe-env.'
     }
 }

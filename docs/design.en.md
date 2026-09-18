@@ -143,6 +143,12 @@ the whole trick:
 - **the path, in the raw text** — it is often quoted, and pass A would have
   erased it
 
+The body of a `$( … )` substitution is checked on its own, before the
+sub-command around it. The split into sub-commands happens on `;`, `&` and `|`
+outside quotes, so `echo "$(cat ~/.env)"` arrives as one sub-command with its
+reader inside a quoted span — exactly where pass B cannot see it. Each body is
+tested as a command of its own and then collapsed to `CMDSUB`.
+
 Requiring both keeps the false-positive rate low: `cat README.md` mentions no
 secret path, and `ls ~/.aws/credentials` reads nothing.
 

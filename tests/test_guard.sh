@@ -160,6 +160,28 @@ check 2 'cat .envrc'
 check 2 'grep KEY ~/.envrc'
 
 echo
+echo "denied — a store read inside a command substitution"
+# The splitter does not cut inside quotes, so `echo "$(cat ~/.env)"` arrived as
+# one sub-command whose reader sat in a stripped span: every pass missed it.
+# shellcheck disable=SC2016
+check 2 'echo "$(cat ~/.env)"'
+# shellcheck disable=SC2016
+check 2 'rg "$(cat ~/.env)"'
+# shellcheck disable=SC2016
+check 2 'grep "$(cat ~/.aws/credentials)" file'
+# shellcheck disable=SC2016
+check 2 'printf "%s" "$(head -1 ~/.env)"'
+
+echo
+echo "allowed — a substitution that reads something ordinary"
+# shellcheck disable=SC2016
+check 0 'echo "$(date +%F)"'
+# shellcheck disable=SC2016
+check 0 'rg "$(cat README.md | head -1)" docs/'
+# shellcheck disable=SC2016
+check 0 'echo "$(git rev-parse HEAD)"'
+
+echo
 echo "allowed — the in-place edits, which print nothing"
 check 0 "sed --in-place 's/a/b/' ~/.env"
 check 0 "awk -i inplace '{print}' ~/.env"
