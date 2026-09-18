@@ -233,7 +233,7 @@ Reading one of these is denied — with a pager that prints the whole file (`cat
 `bat`, `tac`, `nl`, `head`, `tail`, `less`, `more`, `view`, `od`, `xxd`,
 `strings`, `type`, `gc`) and with an extractor that takes a part (`grep`, `rg`,
 `sed`, `awk`, `sort`, `uniq`, `cut`, `rev`, `jq`, `yq` and their relatives). An
-in-place edit (`sed -i`) is not a read, and the first quoted argument of a
+in-place edit is not a read — for `sed`, `perl` and `awk`, where `-i` really means in-place; for `grep`, `rg` and `sort` it is a different flag, and the first quoted argument of a
 grep-like command is the search pattern rather than a path. Listing them, moving them or checking
 that they exist is not — the guard is about printing content, not about the
 files themselves.

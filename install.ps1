@@ -133,7 +133,7 @@ $FailureMatcher = 'Bash|Read|Grep|Edit|Write|mcp__.*'
 $Readers = @('cat','head','tail','less','more','strings','xxd','od','nl','tac','bat','batcat',
              'grep','egrep','fgrep','rg','ag','ack','sed','awk','gawk','mawk','sort','uniq',
              'cut','rev','column','jq','yq')
-$SecretFiles = @('*.env','*.env.*','*/.env','*.pem','*.key','*.p12','*.pfx',
+$SecretFiles = @('*.env','*.env.*','*/.env','*.envrc','*/.envrc','*.pem','*.key','*.p12','*.pfx',
                  '*id_rsa*','*id_ed25519*','*id_ecdsa*','*/.bashrc*','*/.zshrc*',
                  '*/.profile*','*/.bash_profile*','*/.zshenv*','*/.netrc*','*_netrc*',
                  '~/.bashrc*','~/.zshrc*','~/.profile*',

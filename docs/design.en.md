@@ -105,12 +105,18 @@ recommended one.
 Extractors carry two qualifications, without which they would deny ordinary
 work:
 
-- **an in-place edit is not a read.** `sed -i`, `sed -i.bak` and
-  `awk -i inplace` write the file and print nothing;
+- **an in-place edit is not a read**, and the exception is **per command**:
+  `-i` is `--in-place` for `sed` and `perl`, `--ignore-case` for `grep`, `rg`,
+  `ag` and `ack`, and `--ignore-nonprinting` for `sort`. Applied globally in
+  0.7.0 it let `grep -i TOKEN ~/.env` through — the spelling this repository
+  was founded on. Allowed: `sed -i`, `sed -i.bak`, `sed --in-place`,
+  `awk -i inplace`, `perl -i -pe`;
 - **the first quoted argument is the search pattern, not a path.**
   `grep -rn "cat .env" docs/` searches for the words and must stay allowed. That
   span is dropped only when nothing but flags precedes it, so
-  `grep KEY "$HOME/.env"` is still denied.
+  `grep KEY "$HOME/.env"` is still denied. One exception inside the exception:
+  `-f` and `--file` take a **file** of patterns, so a quoted span after either
+  is a path and is checked.
 
 One list covers every system, and either path separator is accepted, because a
 Git Bash or WSL shell is handed one spelling one moment and the other the next:
@@ -121,7 +127,7 @@ Git Bash or WSL shell is handed one spelling one moment and the other the next:
 | `id_rsa`, `id_ed25519`, `id_ecdsa` | everywhere |
 | `.aws/credentials`, `.kube/config`, `.docker/config.json`, `.azure/` | everywhere, backslashed on Windows |
 | `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.my.cnf` | everywhere |
-| `.bashrc`, `.zshrc`, `.profile`, `.netrc` | POSIX |
+| `.bashrc`, `.zshrc`, `.profile`, `.netrc`, `.envrc` | POSIX |
 | `_netrc` | Windows, where that is what `.netrc` is called |
 | `Microsoft.PowerShell_profile.ps1` | Windows, where `$env:API_KEY = "..."` is written |
 | `/proc/N/environ`, `/proc/self/environ` | Linux only; no such file elsewhere |

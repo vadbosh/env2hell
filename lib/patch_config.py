@@ -184,7 +184,8 @@ READERS = ["cat", "head", "tail", "less", "more", "strings",
            "mawk", "sort", "uniq", "cut", "rev", "column", "jq", "yq"]
 
 SECRET_FILES = [
-    "*.env", "*.env.*", "*/.env", "*.pem", "*.key", "*.p12", "*.pfx",
+    "*.env", "*.env.*", "*/.env", "*.envrc", "*/.envrc",
+    "*.pem", "*.key", "*.p12", "*.pfx",
     "*id_rsa*", "*id_ed25519*", "*id_ecdsa*",
     "*/.bashrc*", "*/.zshrc*", "*/.profile*", "*/.bash_profile*",
     "*/.zshenv*", "*/.netrc*", "*_netrc*",

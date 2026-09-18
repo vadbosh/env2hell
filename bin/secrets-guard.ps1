@@ -195,6 +195,9 @@ function Remove-FirstQuotedArgument([string]$text) {
                 $onlyFlags = $true
                 for ($j = 1; $j -lt $tokens.Count; $j++) {
                     if (-not $tokens[$j].StartsWith('-')) { $onlyFlags = $false }
+                    # `grep -f FILE` reads patterns FROM a file: the span after
+                    # it is a path, not a pattern.
+                    if ($tokens[$j] -eq '-f' -or $tokens[$j] -eq '--file') { $onlyFlags = $false }
                 }
                 if ($onlyFlags) { $inq = $c; $dropped = $true; continue }
             }
@@ -210,7 +213,12 @@ $readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|s
 # `sed -i` and `awk -i inplace` write the file and print nothing. The POSIX
 # guard carries the same two lists and the same exception.
 $extractors = '(^|[\s;|&(])(grep|egrep|fgrep|rg|ag|ack|sed|awk|gawk|mawk|sort|uniq|cut|rev|column|jq|yq|select-string)([\s]|$)'
-$inplace = '(^|\s)(-i([^\s]*)?|--in-place([^\s]*)?|inplace)(\s|$)'
+# Per command, not globally: `-i` is `--in-place` for sed and perl and
+# `--ignore-case` for grep, rg, ag and ack. The POSIX guard carries the same
+# three patterns.
+$inplaceCmd = '(^|[\s;|&(])(sed|perl)\s'
+$inplaceFlag = '(^|\s)(-i([^\s]*)?|--in-place([^\s]*)?)(\s|$)'
+$awkInplace = '(^|[\s;|&(])(awk|gawk|mawk)\s.*-i\s+inplace'
 
 # Kept identical to the POSIX version, store for store. Both path separators are
 # accepted everywhere: a Windows path uses a backslash, and a Git Bash or WSL
@@ -218,6 +226,8 @@ $inplace = '(^|\s)(-i([^\s]*)?|--in-place([^\s]*)?|inplace)(\s|$)'
 $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            '|(^|[\s"''/=])[A-Za-z0-9_-]+\.env([.\s"'']|$)' +   # prod.env, config/production.env
            '|[/\\][._](bashrc|zshrc|profile|bash_profile|zshenv|zprofile|netrc)' +
+           '|(^|[\s"''/=])\.envrc([\s"'']|$)' +          # direnv
+
            '|id_rsa|id_ed25519|id_ecdsa' +              # private keys
            '|\.(pem|p12|pfx|key)([\s"'']|$)' +          # certificates and keys
            '|\.aws[/\\]credentials|\.docker[/\\]config\.json' +
@@ -314,7 +324,8 @@ foreach ($rawSub in $rawSubs) {
     $pathScan = $rawSub -replace $envTemplates, '.TPLFILE'
     $reads = $subScan -match $readers
     $pathForStore = $pathScan
-    if (-not $reads -and ($subScan -match $extractors) -and -not ($rawSub -match $inplace)) {
+    $edit = (($rawSub -match $inplaceCmd) -and ($rawSub -match $inplaceFlag)) -or ($rawSub -match $awkInplace)
+    if (-not $reads -and ($subScan -match $extractors) -and -not $edit) {
         $reads = $true
         # The first quoted span of a grep-like command is the pattern, not a
         # path: `grep -rn "cat .env" docs/` searches for the words. Dropped only

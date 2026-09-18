@@ -144,6 +144,29 @@ check 2 'rev ~/.env'
 check 2 'jq -r .token ~/.docker/config.json'
 
 echo
+echo "denied — an extracting reader with a flag that is not an in-place edit"
+# 0.7.0 treated any `-i` as `--in-place`, so `grep -i TOKEN ~/.env` passed — the
+# spelling this repository was founded on. `-i` is ignore-case for grep, rg, ag
+# and ack, and ignore-nonprinting for sort; only sed, perl and awk edit in place.
+check 2 'grep -i TOKEN ~/.env'
+check 2 'rg -i token ~/.env'
+check 2 'grep -in KEY ~/.aws/credentials'
+check 2 'sort -i ~/.env'
+check 2 'grep -i KEY prod.env'
+# `-f FILE` takes a file of patterns, so the quoted span after it is a path.
+check 2 'grep -f "$HOME/.env" list.txt'
+# direnv exports variables the way a shell profile does.
+check 2 'cat .envrc'
+check 2 'grep KEY ~/.envrc'
+
+echo
+echo "allowed — the in-place edits, which print nothing"
+check 0 "sed --in-place 's/a/b/' ~/.env"
+check 0 "awk -i inplace '{print}' ~/.env"
+check 0 "perl -i -pe 's/a/b/' ~/.env"
+check 0 'grep -i foo README.md'
+
+echo
 echo "denied — a store named <something>.env, not just a bare .env"
 check 2 'cat prod.env'
 check 2 'head config/production.env'

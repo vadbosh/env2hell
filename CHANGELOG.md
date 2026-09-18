@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.1 — 2026-09-18
+
+### Fixed
+
+- **`grep -i TOKEN ~/.env` passed, because the guard read `-i` as "in-place".**
+  0.7.0 added extracting readers with one exception: an in-place edit is not a
+  read. The exception matched `-i` for every reader, and `-i` is `--ignore-case`
+  for `grep`, `rg`, `ag` and `ack`, and `--ignore-nonprinting` for `sort` — so
+  the commonest spelling of a search disabled the check. The command in this
+  repository's own founding story is `env | grep -i api`.
+
+  The exception is per command now: `sed` and `perl` with `-i`/`--in-place`,
+  `awk` with `-i inplace`. Everything else keeps `-i` as an ordinary flag.
+  Found by a re-audit of the guard the same afternoon 0.7.0 shipped —
+  `review-2026-09-18-secrets-guard.md`, item A12.
+
+- **`grep -f "$HOME/.env" list.txt` passed.** The first quoted argument of a
+  grep-like command is its search pattern and is skipped when looking for a
+  path — but `-f` and `--file` take a *file* of patterns, so after either of
+  them the span is a path. Both implementations check it now.
+
+### Added
+
+- **`.envrc` is a credential store.** direnv exports variables the way a shell
+  profile does, and the name is specific enough to cost nothing in false
+  positives. Denied in the two hooks, the PowerShell port and the Opencode
+  rules.
+
+### Tests
+
+- `tests/test_guard.sh`: 159 → 171 cases. Eight denied — the five ignore-case
+  spellings, `-f` with a store, and `.envrc` two ways — and four that must stay
+  allowed: `sed --in-place`, `awk -i inplace`, `perl -i -pe`, `grep -i` on an
+  ordinary file. Both implementations report 171.
+
 ## 0.7.0 — 2026-09-18
 
 Behaviour change in all four implementations: the guard denies more than it did.
