@@ -97,11 +97,50 @@ BEGIN {
   # path with no leading dot and over forty characters is the residue, and it
   # is rarer than the secret this catches.
   B64 = "^[A-Za-z0-9+/=]{40,}$"
+  # Names whose value is an identifier or an address rather than a secret.
+  # Whole components, like CRED_VAR above: COMMITTER_EMAIL must not match on
+  # COMMIT.
+  VCS_VAR = "(^|_)(COMMIT|SHA|SHA1|SHA256|REVISION|REV|DIGEST|CHECKSUM|HASH)(_|$)"
+  ADDR_VAR = "(_|^)(HOST|HOSTNAME|SERVER|ENDPOINT|ADDR|ADDRESS|URI|URL)$"
 }
 # A credential-named variable whose value could be one. Three things keep this
 # from masking half the environment: a path is configuration, not a secret; so
 # is a flag; and nothing shorter than eight characters is worth hiding, which
 # is what keeps TOKENIZERS_PARALLELISM=false readable.
+# A version-control identifier, not a secret. A commit SHA is exactly the shape
+# the hex fallback below was written for — 40 hex characters — and every CI
+# system exports at least one: GIT_COMMIT, CI_COMMIT_SHA, GITHUB_SHA. Masking it
+# leaks nothing and costs the reader a fact they came for, so the line reads as
+# if a key had been removed.
+#
+# Gated on BOTH sides: the name has to say so, and the value has to be hex of a
+# git length. A key is not called GIT_COMMIT, and a Huawei secret is 40 base62
+# characters rather than 40 hex, so the overlap this exemption opens is empty.
+function vcs_identifier(key, val) {
+  if (toupper(key) !~ VCS_VAR) return 0
+  sub(/^sha256:/, "", val)
+  if (val !~ /^[A-Fa-f0-9]+$/) return 0
+  return (length(val) == 7 || length(val) == 8 || length(val) == 40 || length(val) == 64)
+}
+
+# A network address, not a credential. SECRET_SERVICE_HOST is the freedesktop
+# variable, TOKEN_ENDPOINT is in every OAuth configuration, and the name tier
+# masked both because the name carries SECRET or TOKEN as a component.
+#
+# Gated on both sides again: the name ends in an address-shaped suffix, and the
+# value is a bare hostname or a URL. A credential embedded in a URL is caught
+# by tier 1 before this is reached, so DB_URL with a password inside it stays
+# masked.
+#
+# The _FILE and _PATH suffixes are deliberately NOT here, and docs/design.md
+# says why: a file name chosen by a person can carry the secret, a hostname
+# cannot.
+function network_address(key, val) {
+  if (toupper(key) !~ ADDR_VAR) return 0
+  if (val ~ /^https?:\/\//) return 1
+  return (val ~ /^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+(:[0-9]+)?$/)
+}
+
 function named_credential(key, val) {
   if (toupper(key) !~ CRED_VAR)                 return 0
   if (length(val) < 8)                          return 0
@@ -125,6 +164,10 @@ function named_credential(key, val) {
   if (val ~ RE)                                                          { print key "=" mask(val); next }
   if (val ~ SK)                                                          { print key "=" mask(val); next }
   if (tolower($0) ~ /identified by ['"'"'"][^'"'"'"]{6,}/)                { print key "=" mask(val); next }
+  # Two exemptions before the fallbacks: what they would mask here is an
+  # identifier or an address, and both are named as such by the variable.
+  if (vcs_identifier(key, val))                                          { print key "=" val; next }
+  if (network_address(key, val))                                         { print key "=" val; next }
   # generic high-entropy fallbacks (catch unprefixed keys: hex, hex.base64, long tokens)
   if (val ~ /^[A-Fa-f0-9]{32,}$/)                                         { print key "=" mask(val); next }
   if (val ~ /^[A-Za-z0-9]{20,}\.[A-Za-z0-9_-]{8,}$/)                      { print key "=" mask(val); next }

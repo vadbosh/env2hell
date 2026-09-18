@@ -87,6 +87,25 @@ $credVar = '^([A-Za-z0-9]+_)*' + $credName + '(_[A-Za-z0-9]+)*$' +
            '|^(([A-Za-z0-9]+_)+PASS(_[A-Za-z0-9]+)*' +
            '|PASS(_[A-Za-z0-9]+)+)$'
 
+# A version-control identifier and a network address are not secrets, and the
+# name says which. Both are gated on the name AND the value; the POSIX file
+# carries the same two functions with the same lists.
+$vcsVar  = '(^|_)(COMMIT|SHA|SHA1|SHA256|REVISION|REV|DIGEST|CHECKSUM|HASH)(_|$)'
+$addrVar = '(_|^)(HOST|HOSTNAME|SERVER|ENDPOINT|ADDR|ADDRESS|URI|URL)$'
+
+function Test-VcsIdentifier([string]$Name, [string]$Value) {
+    if ($Name.ToUpper() -notmatch $vcsVar) { return $false }
+    $v = $Value -replace '^sha256:', ''
+    if ($v -notmatch '^[A-Fa-f0-9]+$') { return $false }
+    return ($v.Length -in 7, 8, 40, 64)
+}
+
+function Test-NetworkAddress([string]$Name, [string]$Value) {
+    if ($Name.ToUpper() -notmatch $addrVar) { return $false }
+    if ($Value -match '^https?://') { return $true }
+    return ($Value -cmatch '^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+(:[0-9]+)?$')
+}
+
 function Test-NamedCredential([string]$Name, [string]$Value) {
     if ($Name.ToUpper() -notmatch $credVar)           { return $false }
     if ($Value.Length -lt 8)                          { return $false }
@@ -100,6 +119,9 @@ Get-ChildItem Env: | Sort-Object Name | ForEach-Object {
     $value = [string]$_.Value
     if ([string]::IsNullOrEmpty($value)) {
         "$($_.Name)="
+    } elseif ((Test-VcsIdentifier $_.Name $value) -or (Test-NetworkAddress $_.Name $value)) {
+        # An identifier or an address: named as such, shaped as such, printed.
+        "$($_.Name)=$value"
     } elseif ((Test-Secret $value) -or (Test-NamedCredential $_.Name $value)) {
         "$($_.Name)=<REDACTED:$($value.Length)>"
     } else {

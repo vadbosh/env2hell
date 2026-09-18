@@ -89,7 +89,19 @@ keep the tier from eating half the environment:
   `TOKENIZERS_PARALLELISM=false` readable;
 - a value that looks like a path (`/x`, `./x`, `~/x`, `C:\x`) — a path is
   configuration, not a secret;
-- `true`, `false`, `yes`, `no`, `on`, `off`, or a number.
+- `true`, `false`, `yes`, `no`, `on`, `off`, or a number;
+- a **version-control identifier**: the name carries `COMMIT`, `SHA`,
+  `REVISION`, `DIGEST`, `CHECKSUM` or `HASH`, and the value is hex of 7, 8, 40
+  or 64 characters, with or without a `sha256:` prefix. A commit SHA is exactly
+  the shape the "32 or more hex" rule was written for, and every CI system
+  exports one;
+- a **network address**: the name ends in `_HOST`, `_HOSTNAME`, `_SERVER`,
+  `_ENDPOINT`, `_ADDR`, `_ADDRESS`, `_URI` or `_URL`, and the value is a bare
+  hostname or `http(s)://…`. Credentials inside a URL are caught by tier 1
+  first, so `DB_URL=postgres://user:password@host` stays masked.
+
+Both exemptions are checked from both sides — the name **and** the shape of the
+value. `COMMIT_TOKEN` holding forty non-hex characters is still masked.
 
 Two variables with the **same** value show it:
 

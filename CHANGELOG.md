@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.2 — 2026-09-18
+
+### Fixed
+
+- **A git commit SHA in an environment variable was masked.** 40 hex characters
+  is exactly the shape the hex fallback was written for, and `GIT_COMMIT`,
+  `CI_COMMIT_SHA` and `GITHUB_SHA` are exported by every CI system. Nothing
+  leaked; the reader lost a fact and the line read as if a key had been removed.
+- **`SECRET_SERVICE_HOST=vault.internal` was masked**, and so was
+  `TOKEN_ENDPOINT=https://auth.example/oauth/token` — the name tier fired
+  because the name carries `SECRET` or `TOKEN`, and a hostname is configuration.
+
+  Both exemptions are gated on the name **and** the value: a version-control
+  name with hex of a git length, an address-suffixed name with a hostname or a
+  URL. `COMMIT_TOKEN` with forty non-hex characters is still masked, and
+  `DB_URL` with a password inside it is caught by tier 1 before either
+  exemption is reached.
+
+  From `review-2026-09-18-safe-env.md`, items A1 and A2. That review also closed
+  all six items of the 2026-09-17 pass.
+
+### Tests
+
+- `tests/test_safe_env.sh`: 21 → 27 cases, and the PowerShell port runs the same
+  set.
+- The sweep that decides whether a masker is too wide: 28 ordinary variables —
+  `PATH`, `LANG`, `JAVA_OPTS`, `KUBE_CONTEXT`, `CI_PIPELINE_ID`,
+  `npm_config_registry` and the rest — **0 masked**, against 2 before this
+  change.
+
 ## 0.8.1 — 2026-09-18
 
 ### Fixed

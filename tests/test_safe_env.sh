@@ -127,6 +127,41 @@ else
     no "leaves a path alone — configuration, not a secret" "the path was masked"
 fi
 
+# ── an identifier and an address are not secrets ───────────────────────────
+# A commit SHA is 40 hex characters, which is exactly the shape the hex
+# fallback was written for, and every CI system exports one. A hostname in
+# SECRET_SERVICE_HOST or TOKEN_ENDPOINT is configuration. Both exemptions are
+# gated on the name AND the value, so a key that happens to sit in a variable
+# named COMMIT_TOKEN is still masked.
+SHA40=b261871aa0f4e2d9c8b71f30a1d2e5c7a9b4c6d8
+ident="$(MYTEST_GIT_COMMIT="$SHA40" \
+         MYTEST_CI_COMMIT_SHA="$SHA40" \
+         MYTEST_IMAGE_DIGEST="sha256:9f2c7ab4c1d8e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e" \
+         MYTEST_SECRET_SERVICE_HOST='vault.internal' \
+         MYTEST_TOKEN_ENDPOINT='https://auth.example/oauth/token' \
+         MYTEST_COMMIT_TOKEN='zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' \
+         run_tool 2>/dev/null)"
+for pair in "MYTEST_GIT_COMMIT=$SHA40" \
+            "MYTEST_CI_COMMIT_SHA=$SHA40" \
+            'MYTEST_SECRET_SERVICE_HOST=vault.internal' \
+            'MYTEST_TOKEN_ENDPOINT=https://auth.example/oauth/token'; do
+    if grep -qx -- "$pair" <<< "$ident"; then
+        ok "leaves alone: ${pair%%=*}"
+    else
+        no "leaves alone: ${pair%%=*}" "it was masked"
+    fi
+done
+if grep -q '^MYTEST_IMAGE_DIGEST=sha256:' <<< "$ident"; then
+    ok "leaves a sha256: digest alone"
+else
+    no "leaves a sha256: digest alone" "it was masked"
+fi
+if grep -q '^MYTEST_COMMIT_TOKEN=<REDACTED:' <<< "$ident"; then
+    ok "masks a 40-character non-hex value even when the name says COMMIT"
+else
+    no "masks a 40-character non-hex value" "the exemption was too wide"
+fi
+
 # `sk-` needs a left boundary, and the boundary has to treat `-` as part of a
 # word: the character before `sk-` in a model name IS a hyphen, so a plain word
 # boundary changes nothing. All values invented.
