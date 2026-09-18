@@ -126,7 +126,7 @@ A format present in one file and missing from the other is worse than absent
 from both: it produces a machine where the behaviour depends on the operating
 system, and nobody expects that.
 
-## What the guard blocks, by contrast
+## What the guard blocks, next to what the redactor masks
 
 `safe-env` masks values. `secrets-guard` denies commands — a different list,
 and it lives in more than one place because the consumers differ. The two hooks

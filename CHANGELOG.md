@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.3 — 2026-09-18
+
+### Documentation
+
+- Three headings named the subject the reader had to reconstruct from the
+  section above: "How it is wired" → "Как env2hell встраивается в ассистента"
+  and its English pair, and "Чем от этого отличается запрет команд" → "Чем
+  запрет команд отличается от маскирования" with the English side moved the
+  same way. Found by a heading check that reads the table of contents as the
+  reader does, with no previous line in view. No anchor pointed at the old
+  text.
+
 ## 0.6.2 — 2026-09-18
 
 ### Documentation

@@ -244,7 +244,7 @@ Backups made at install time are left in place: they hold whatever your
 configuration looked like before, and removing them here would defeat the
 purpose of having made them.
 
-## How it is wired
+## Как env2hell встраивается в ассистента
 
 | Assistant | Mechanism |
 |---|---|
