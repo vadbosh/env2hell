@@ -173,6 +173,46 @@ check_labelled "HW_SECRET_KEY: $HEX"         'HW_SECRET_KEY:'
 check_labelled "OS_SECRET_KEY=$HEX"          'OS_SECRET_KEY='
 check_labelled "HUAWEICLOUD_SECRET_KEY=$HEX" 'HUAWEICLOUD_SECRET_KEY='
 
+# ── a credential glued to its flag ─────────────────────────────────────────
+# Tier 2 needs a separator between the label and the value. Four client idioms
+# have none, and all four are in daily use: the MySQL client documents
+# `-p<password>`, every Redis tutorial shows `-a <password>`, smbclient takes
+# `-U user%password`, and curl takes `-u user:password`. Each rule is gated on
+# the command that owns it, because the flag letters mean other things
+# elsewhere — `ls -p`, `grep -a`, `sort -u` must stay untouched.
+check_glued () {                        # <line> <text that must survive>
+    local line="$1" keep="$2" out
+    out="$(printf '%s\n' "$line" | run_tool --filter)"
+    if grep -q "$HEX" <<< "$out"; then
+        no "masks $keep" "the raw value reached the output"
+    elif ! grep -qF -- "$keep" <<< "$out"; then
+        no "masks $keep" "the flag or the user name was masked too: $out"
+    elif ! grep -q 'REDACTED' <<< "$out"; then
+        no "masks $keep" "nothing was masked: $out"
+    else
+        ok "masks $keep, keeping the flag readable"
+    fi
+}
+
+check_glued "mysql -uroot -p$HEX -h db"                  '-p<REDACTED'
+check_glued "mysqldump -uroot -p$HEX db"                 '-p<REDACTED'
+check_glued "redis-cli -a $HEX ping"                     '-a <REDACTED'
+check_glued "smbclient //srv/share -U admin%$HEX"        'admin%<REDACTED'
+check_glued "curl -u admin:$HEX https://api.example"     'admin:<REDACTED'
+check_glued "curl --user admin:$HEX https://api.example" 'admin:<REDACTED'
+
+# The same flag letters where they mean something else. --filter exits 1 when
+# it masked nothing, which is the assertion here.
+for line in 'ls -p /tmp' 'grep -a1 pattern file.txt' 'sort -u names.txt' \
+            'mysql -p -h db' 'curl https://api.example/users'; do
+    left="$(printf '%s\n' "$line" | run_tool --filter)"
+    if grep -q 'REDACTED' <<< "$left"; then
+        no "leaves alone: $line" "something was masked"
+    else
+        ok "leaves alone: $line"
+    fi
+done
+
 # ── a label followed by a name is not a secret ──────────────────────────────
 # Tier 2 keys on a label plus any run of 16+ token characters, and an ordinary
 # identifier fits that exactly. Measured 2026-09-14 over 69 Codex transcripts:

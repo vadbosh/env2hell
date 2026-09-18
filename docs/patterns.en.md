@@ -121,6 +121,14 @@ So in output the frame is rebuilt from a label on the same line:
 | `password=`, `secret=`, `api_key=` | `DB_URL=…?password=<REDACTED:24>` |
 | `TOKEN:`, `Authorization: Bearer` | `Authorization: Bearer <REDACTED:180>` |
 | plurals and `-`/`_` spellings | `access_key`, `client-secret`, `credentials` |
+| a value glued to its flag, or after a colon | `mysql -p<REDACTED:16>`, `redis-cli -a <REDACTED:16>`, `-U admin%<REDACTED:16>`, `curl -u admin:<REDACTED:16>` |
+
+The last row is four client idioms with no separator at all between the flag and
+the value. Each rule fires only next to the command that owns it — `mysql`,
+`mariadb`, `mysqldump`, `redis-cli`, `smbclient`, `curl` — because the same flag
+letters mean other things elsewhere, and `ls -p`, `grep -a` and `sort -u` stay
+untouched. Only the value is replaced: the flag and the user name in `admin:`
+stay readable.
 
 The value itself must still look like a secret: 16 or more characters from
 `A-Za-z0-9+/=_.~-`. Sixteen, not thirty-two, because the label has already done

@@ -149,6 +149,34 @@ $script:Hits = 0
 
 function Get-Mask([string]$Value) { "<REDACTED:$($Value.Length)>" }
 
+# A credential glued to its flag, or after a colon in a user:password pair.
+# The labelled rule above needs a separator; these four client idioms have none,
+# and each is gated on the command that owns it because -p, -a and -u mean other
+# things elsewhere (ls -p, grep -a, sort -u). The POSIX file carries the same
+# four, gated the same way.
+$GluedRules = @(
+    @{ Cmd = [regex]::new('(^|[^\S\n])(mysql|mariadb|mysqldump|mysqladmin)([^\S\n]|$)', 'IgnoreCase')
+       Pat = [regex]::new('(?<head>(^|[^\S\n])-p)(?<val>[^\s]{8,})', 'IgnoreCase') }
+    @{ Cmd = [regex]::new('(^|[^\S\n])redis-cli([^\S\n]|$)', 'IgnoreCase')
+       Pat = [regex]::new('(?<head>(^|[^\S\n])-a[^\S\n]+)(?<val>[^\s]{8,})', 'IgnoreCase') }
+    @{ Cmd = [regex]::new('(^|[^\S\n])smbclient([^\S\n]|$)', 'IgnoreCase')
+       Pat = [regex]::new('(?<head>(^|[^\S\n])-U[^\S\n]*[A-Za-z0-9_.@-]+%)(?<val>[^\s]{8,})', 'IgnoreCase') }
+    @{ Cmd = [regex]::new('(^|[^\S\n])(curl|wget|http)([^\S\n]|$)|--user[^\S\n]', 'IgnoreCase')
+       Pat = [regex]::new('(?<head>(^|[^\S\n])(-u|--user)[^\S\n]+[A-Za-z0-9_.@-]+:)(?<val>[^\s]{8,})', 'IgnoreCase') }
+)
+
+function Edit-Glued([string]$Line) {
+    foreach ($rule in $GluedRules) {
+        if (-not $rule.Cmd.IsMatch($Line)) { continue }
+        $Line = $rule.Pat.Replace($Line, {
+            param($m)
+            $script:Hits++
+            $m.Groups['head'].Value + (Get-Mask $m.Groups['val'].Value)
+        })
+    }
+    return $Line
+}
+
 function Edit-Line([string]$Line) {
     if ($Line -eq '') { return $Line }
     $out = $patternsRe.Replace($Line, {
@@ -171,6 +199,7 @@ function Edit-Line([string]$Line) {
             $script:Hits++
             $m.Groups['head'].Value + $q + (Get-Mask $v) + $q
     })
+    $out = Edit-Glued $out
     return $out
 }
 

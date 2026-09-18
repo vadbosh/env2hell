@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.1 — 2026-09-18
+
+### Fixed
+
+- **A password glued to its flag was not masked.** Tier 2 needs a separator
+  between the label and the value — a space, an `=` or a colon — and four client
+  idioms have none: `mysql -p<password>` (the form the MySQL client documents),
+  `redis-cli -a <password>`, `smbclient -U user%password`, and
+  `curl -u user:password` with its `--user` spelling. All four now mask the
+  value and keep the flag and the user name readable.
+
+  Each rule fires only next to the command that owns it, because the flag
+  letters mean other things elsewhere: `ls -p`, `grep -a`, `sort -u` and
+  `mysql -p` with no value are untouched, and there are tests for each.
+
+  From `review-2026-09-18-secrets-redact.md`, items A1 and A2. The same review
+  closed all eleven items of the 2026-09-16 pass — the 5.6 s/MB filter now does
+  1 MB in 352 ms, and the scratch directory is empty at mode 0700.
+
+### Tests
+
+- `tests/test_redact.sh`: 91 → 102 cases. Six masked idioms, five commands that
+  must stay untouched. The PowerShell port runs the same new cases.
+- The standing check that matters most for a filter: 1195 lines of real machine
+  output — `ls -la /usr/bin`, `git log --oneline`, the full README and CLI
+  manual — pass through with **zero** changed lines, before and after this
+  change.
+
 ## 0.8.0 — 2026-09-18
 
 ### Fixed
