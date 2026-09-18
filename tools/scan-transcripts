@@ -11,7 +11,7 @@
 # Rotation is the only fix for a leaked value, and rotation needs a list. This
 # produces the list.
 #
-#   scan-transcripts                 scan every store this machine has
+#   scan-transcripts                 scan the four transcript stores below
 #   scan-transcripts --path DIR      scan a directory of your own
 #   scan-transcripts --quiet         per-file counts, no excerpts
 #   scan-transcripts --files         only the names of files with findings
@@ -56,6 +56,12 @@ while [ $# -gt 0 ]; do
         --files|-l)       mode=files ;;
         --include-stores) stores=include ;;
         --path|-p)  shift; [ $# -gt 0 ] || { echo "--path needs a directory" >&2; exit 2; }
+                    # A path that is not there is a mistake, not an empty
+                    # result. Without this the find below returns nothing, the
+                    # report reads "scanned 0 file(s)" and the exit status is 0
+                    # — indistinguishable from a clean machine, which is the one
+                    # answer this tool exists to tell apart.
+                    [ -e "$1" ] || { echo "scan-transcripts: no such path: $1" >&2; exit 2; }
                     paths+=("$1") ;;
         -h|--help)  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)          echo "unknown option: $1" >&2; exit 2 ;;
@@ -127,7 +133,10 @@ total_hits=0
 hit_files=0
 skipped_stores=0
 
-while IFS= read -r f; do
+# -print0 and -d '': a newline in a filename is a legal character and used to
+# split one name into two, which broke the scan and dropped whatever that file
+# held.
+while IFS= read -r -d '' f; do
     if [ "$stores" = skip ] && is_store "$f"; then
         skipped_stores=$((skipped_stores + 1))
         continue
@@ -150,15 +159,30 @@ while IFS= read -r f; do
             printf '\n%s  — %s line(s) with a credential\n' "$f" "$n"
             awk -v ORIG="$f" -v FNAME="$f" "$EXCERPT_AWK" \
                 "$tmp/masked" 2>/dev/null | head -20
+            # The count above is the truth; the excerpts are capped. Without
+            # this line the twenty-first credential is simply absent from what
+            # somebody rotates from.
+            [ "$n" -gt 20 ] && printf '  … and %d more in this file — --quiet counts them all\n' "$((n - 20))"
             ;;
     esac
 done < <(find "${paths[@]}" -type f \
               \( -name '*.jsonl' -o -name '*.json' -o -name '*.log' -o -name '*.db' \) \
-              -size -200M 2>/dev/null | sort)
+              -size -200M -print0 2>/dev/null | sort -z)
+
+# Counted separately, because a file too large to scan is not a file with
+# nothing in it. An rtk tee log grows without bound, and silence about it reads
+# as coverage.
+oversized=$(find "${paths[@]}" -type f \
+                 \( -name '*.jsonl' -o -name '*.json' -o -name '*.log' -o -name '*.db' \) \
+                 -size +200M 2>/dev/null | wc -l)
 
 if [ "$mode" != files ]; then
     printf '\nscanned %d file(s); %d with findings, %d line(s) in total\n' \
         "$total_files" "$hit_files" "$total_hits"
+    if [ "${oversized:-0}" -gt 0 ]; then
+        printf '%d file(s) over 200 MB not scanned — they are counted in\n' "$oversized"
+        printf 'neither figure above.\n'
+    fi
     if [ "$skipped_stores" -gt 0 ]; then
         printf '%d token store(s) skipped — auth.json and the like hold a\n' "$skipped_stores"
         printf 'credential by design. --include-stores to scan them too.\n'

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.3 — 2026-09-18
+
+### Fixed
+
+- **A `--path` that does not exist reported a clean machine.** `find` printed
+  its error into `/dev/null`, the loop never ran, and the tool exited 0 —
+  indistinguishable from "nothing found", which is the one distinction a
+  scanner exists to make. A missing path is now exit 2, as the documented
+  contract always said.
+- **A newline in a filename split the scan.** `find` without `-print0` fed one
+  name to the loop as two: the file was skipped, its credentials never
+  reported, and the error landed among the findings.
+- **Two silent truncations now say so.** Twenty excerpts per file was a cap with
+  no mention — the header said 30 findings and printed 20 — and files over
+  200 MB were skipped without appearing in any figure. Both are counted and
+  named.
+
+### Documentation
+
+- The help text said "every store this machine has"; it scans four transcript
+  stores, and now says which.
+
+### Tests
+
+- `tests/test_scan.sh`: 16 → 20 cases.
+
 ## 0.8.2 — 2026-09-18
 
 ### Fixed

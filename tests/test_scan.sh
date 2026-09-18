@@ -146,6 +146,48 @@ else
     no "--quiet prints per-file counts" "no count line"
 fi
 
+# ── a mistake is not a clean result ─────────────────────────────────────────
+# A path that is not there used to print "scanned 0 file(s)" and exit 0, which
+# reads exactly like a machine with nothing on it.
+"$TOOL" --path /nonexistent-path-for-the-test >/dev/null 2>&1
+if [ $? -eq 2 ]; then
+    ok "a missing --path exits 2, not 0"
+else
+    no "a missing --path exits 2" "a typo reads as a clean machine"
+fi
+
+empty_dir="$(mktemp -d)"
+"$TOOL" --path "$empty_dir" >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+    ok "an existing but empty directory is still exit 0"
+else
+    no "an empty directory exits 0" "it reported an error"
+fi
+
+# ── a newline in a filename ─────────────────────────────────────────────────
+# find without -print0 split one name into two: the file was skipped, its
+# credential never reported, and the error landed among the findings.
+nl_dir="$(mktemp -d)"
+printf 'x --token abcdefghijklmnopqrstuvwx\n' > "$nl_dir/$(printf 'a\nb').jsonl"
+if [ "$("$TOOL" --files --path "$nl_dir" 2>/dev/null | wc -l)" -ge 1 ]; then
+    ok "a filename containing a newline is scanned"
+else
+    no "a filename containing a newline is scanned" "the file was skipped"
+fi
+
+# ── both truncations announce themselves ────────────────────────────────────
+many_dir="$(mktemp -d)"
+i=0; while [ $i -lt 25 ]; do
+    printf 'line%d --token abcdefghijklmnopqrstu%03d\n' "$i" "$i" >> "$many_dir/many.jsonl"
+    i=$((i + 1))
+done
+many_out="$("$TOOL" --path "$many_dir" 2>/dev/null)"
+if grep -q 'and 5 more in this file' <<< "$many_out"; then
+    ok "says how many excerpts it did not print"
+else
+    no "says how many excerpts it did not print" "the count and the list disagree in silence"
+fi
+
 # ── the patterns are not duplicated ─────────────────────────────────────────
 # Detection has to go through secrets-redact, or the scanner drifts from the
 # guard and reports clean on whatever the guard has learned since.
