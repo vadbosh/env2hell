@@ -11,7 +11,7 @@ Works with Claude Code, Opencode and Codex, on Linux, macOS and Windows.
 
 [Русская версия](README.RU.md)
 
-## Why
+## Why env2hell exists
 
 An app fails with an authorisation error. The developer asks the assistant to
 work out why the 401. It starts with the sensible thing — checking whether the
@@ -169,8 +169,8 @@ nothing usable.
 ## What has already leaked
 
 The hooks stop a secret from reaching the model. They can do nothing about the
-ones already on disk: a transcript is written as the session runs, it is never
-rewritten, and a value that leaked before the hook covered that case is still
+ones already on disk. A transcript is written as the session runs and is never
+rewritten. A value that leaked before the hook covered that case is still
 sitting in it. Rotation is the only fix, and rotation needs a list.
 
 ```bash
@@ -228,9 +228,9 @@ something you run when you have a reason to, not something the assistant calls.
 All report `failed 0`.
 
 Run the `--pwsh` half whenever either side changes. Two implementations of one
-rule drift in silence otherwise: `secrets-guard.ps1` lost the
-command-substitution pass the POSIX guard had and denied a working command, and
-nothing ran to notice until the suite was pointed at it.
+rule drift in silence otherwise. `secrets-guard.ps1` lost the
+command-substitution pass the POSIX guard had and denied a working command.
+Nothing ran to notice until the suite was pointed at it.
 
 ## Uninstall
 
@@ -294,7 +294,7 @@ now and finding out never.
 
 ## Documentation
 
-- [How it works](docs/design.en.md) — the two passes, and why each exists
+- [How env2hell works](docs/design.en.md) — the two passes, and why each exists
 - [Installation in detail](docs/install.en.md) — per assistant, Windows, troubleshooting
 - [What counts as a secret](docs/patterns.en.md) — the mask list, and how to extend it
 
@@ -309,17 +309,17 @@ now and finding out never.
   non-zero exit does not fire `PostToolUse`; it fires `PostToolUseFailure`,
   whose only documented return field is `additionalContext`. There is no slot
   for a replacement, so the output reaches the model and the transcript intact.
-  env2hell wires a `--warn-only` hook there, which tells the model a credential
-  just landed in the transcript and has to be rotated — a loud leak instead of a
-  silent one, which is all that event allows.
+  env2hell wires a `--warn-only` hook there. It tells the model a credential
+  just landed in the transcript and has to be rotated. A loud leak instead of a
+  silent one — all that event allows.
 
   This is not a corner case. A failing command is where credentials surface: a
   URL carrying a password, an auth error quoting the token, a connection string
   in a stack trace. It is how the GitLab token that prompted this section
   reached a transcript in full, from a `git remote -v` that exited 1 because a
-  later command in the same call failed. The durable fix for that class is to
-  keep the credential out of the command's output in the first place — a deploy
-  key or a credential helper instead of a token embedded in a remote URL.
+  later command in the same call failed. That class closes one way: keep the
+  credential out of the command's output. A deploy key or a credential helper
+  instead of a token written into a remote URL.
 - The redactor needs a label. An unlabelled secret that looks like ordinary text
   — a passphrase of three English words, say — passes through untouched.
 - It is a filter, not a sandbox. It raises the cost of the common accident; it

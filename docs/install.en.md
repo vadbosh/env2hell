@@ -97,9 +97,9 @@ configuration, with one difference: the hook is registered with
 Commands go to `%LOCALAPPDATA%\Programs\env2hell` by default.
 
 Run one installer at a time. The Windows installer writes each configuration in
-place rather than through a temporary file, so two of them running together can
-leave a half-written file behind — not merely one change overwriting another,
-which is what happens on Linux and macOS.
+place rather than through a temporary file. Two of them running together can
+therefore leave a half-written file behind — not merely one change overwriting
+another, which is what happens on Linux and macOS.
 
 ### If the script will not run
 

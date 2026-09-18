@@ -1,4 +1,4 @@
-# How it works
+# How env2hell works
 
 ## The shape of the problem
 
@@ -70,9 +70,9 @@ just that token:
 What remains and still does not look like a command name — a fragment starting
 with `"`, `{`, `[`, `$` or `*`, or containing a character outside
 `[A-Za-z0-9_.-]` — is skipped rather than guessed at. `"env"` is the one shape
-in that list that really is a command: pass A works on quote-stripped text, so
-the quotes are gone by the time it is read, and recovering it would mean giving
-up the stripping that keeps a commit message out of the decision.
+in that list that really is a command. Pass A works on quote-stripped text, so
+the quotes are gone by the time it is read. Recovering that case would mean
+giving up the stripping that keeps a commit message out of the decision.
 
 ### Where the line is drawn
 
@@ -224,7 +224,7 @@ ordinary commands.
 The mask keeps the length — `<REDACTED:32>` — because the model usually needs
 to know *that* something was removed and how long it was, not what it was.
 
-### What it costs
+### What the masking costs
 
 The hook fires after the tool has already run. The command executed, any side
 effect it had stands, and the assistant's telemetry records the original output.
@@ -232,8 +232,8 @@ What is prevented is narrower and still worth having: the secret does not enter
 the model's context, and so does not enter the transcript the model writes, the
 summary it produces, or the memory store that indexes them.
 
-It also fails open, on the same reasoning as the guard: no `jq`, unparsable
-input, or a tool result with no `stdout`/`stderr` all mean exit 0 with no
+It also fails open, on the same reasoning as the guard. No `jq`, unparsable
+input, a tool result with no `stdout`/`stderr` — all three mean exit 0 with no
 output, which leaves the result untouched.
 
 ## Why a rule file ships with it
@@ -253,10 +253,14 @@ Every attempt is a wasted round: your time, and one more chance of stumbling on
 a spelling the check does not take apart.
 
 The installer puts `rules/secrets-hygiene.md` where the assistant reads its
-standing instructions: `~/.claude/rules/` for Claude Code, `~/.codex/memories/`
-for Codex, `~/.config/opencode/instructions/` for Opencode — where it also adds
-the file to the `instructions` list, without which Opencode never reads it. The
-file says what to use instead:
+standing instructions:
+
+- Claude Code — `~/.claude/rules/`;
+- Codex — `~/.codex/memories/`;
+- Opencode — `~/.config/opencode/instructions/`, where the installer also adds
+  the file to the `instructions` list, without which Opencode never reads it.
+
+The file says what to use instead:
 
 ```bash
 safe-env                      # whole environment, secret values masked
