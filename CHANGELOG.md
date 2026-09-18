@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.2 — 2026-09-18
+
+### Documentation
+
+- **Long sentences cut by count, not by ear.** A sentence past thirty words is
+  nearly always a list joined by semicolons, and the reader reaches its end
+  without its beginning. Both READMEs and both manuals were measured and cut in
+  pairs: what the hooks cannot do about a transcript already on disk, why the
+  PowerShell half of the suite has to run, why `"env"` inside quotes is not
+  recoverable, the `--warn-only` hook on a failed command, and the two
+  concurrent Windows installers. Two enumerations became lists — where the
+  installer puts the rule file for each assistant, and the three conditions
+  under which the redaction hook fails open.
+- **Four headings opened with a pronoun** and left the subject to be
+  reconstructed from the section above: "Зачем это нужно", "Как этим
+  пользоваться", "Как это устроено", "Чем за это приходится платить". They name
+  env2hell and the masking now, in both languages; the two README links to the
+  renamed design document were updated with them.
+
+### Repository
+
+- The audit reviews produced against `bin/` stay out of the repository, and the
+  comment that used to point at one names its reason instead.
+
 ## 0.6.1 — 2026-09-17
 
 ### Fixed
