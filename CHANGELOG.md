@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.4 — 2026-09-18
+
+### Documentation
+
+- **The store list said `*.env`, and only `.env` is denied.** Every other glob
+  on that line is a real glob — `cat server.pem`, `cat deploy.key` and
+  `cat cert.p12` are all refused — so the entry read as one. The hooks need a
+  boundary to the left of `.env`, which is why `cat prod.env`,
+  `cat secrets.env` and `head config/production.env` go through while
+  `cat .env`, `cat /srv/app/.env` and `cat .env.local` are refused. Both
+  languages now write `.env`, list which spellings are covered, and name the
+  reason the boundary exists.
+- **And the implementations disagree about it.** `SECRET_FILES` in
+  `lib/patch_config.py` carries a real `*.env` glob, so Opencode denies
+  `cat prod.env` while both hooks allow it. Measured, not inferred:
+  `tests/test_policy.sh` reports it as soon as `prod.env` joins the shared
+  list. Written into both versions of the page as an open split, with the
+  advice to treat only a file named `.env` as covered until it is resolved.
+- **A whole masking tier was undocumented** — the one that decides by the
+  *name* of a variable. `HW_SECRET_KEY` and `BUILD_ID` holding the same value
+  come back differently, and nothing on the page said why. The name list, the
+  whole-component rule and the three exemptions are now a section of their own
+  in both languages.
+- `ATATT…` ships in both implementations and had no row in the format table.
+- "Adding a format" named two files; a rule can belong to four places, and
+  which one depends on whether it is a prefix, a shape, a name, or something
+  the redactor must not have. Plus the parity table, which is what makes "add
+  it to both" enforceable.
+
+### Tests
+
+- `tests/test_policy.sh` pins `~/srv/app/.env` as denied — the spelling that
+  proves the boundary rule covers a path, not just a bare filename.
+
 ## 0.6.3 — 2026-09-18
 
 ### Documentation

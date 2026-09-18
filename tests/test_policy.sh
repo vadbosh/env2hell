@@ -74,6 +74,7 @@ deny  ~/.databrickscfg
 deny  ~/.snowflake/config
 deny  ~/.config/containers/auth.json
 deny  ~/.config/helm/registry/config.json
+deny  ~/srv/app/.env
 allow ~/.ssh/config
 allow ~/README.md
 allow ~/.env.example

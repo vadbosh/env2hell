@@ -27,6 +27,7 @@ same output and reveals nothing that helps an attacker.
 | Stripe, live | `sk_live_` / `rk_live_` + 20 or more |
 | OpenAI family | `sk-`, optionally `sk-or-v1-`, `sk-proj-`, `sk-ant-` + 20 or more |
 | Atlassian | `at-` + 30 or more |
+| Atlassian API token | `ATATT` + 20 or more |
 | JWT | `eyJ…` `.` `eyJ…` `.` |
 | Private key | a `BEGIN … PRIVATE KEY` line |
 | Password in a URL | `://user:password@` |
@@ -64,6 +65,41 @@ was printed in full by an early version: the dot broke every run long enough to
 trigger the other rules, so none of them fired. The `key.signature` row was
 added for exactly that shape, and it is why an unfamiliar token format is worth
 testing rather than assuming.
+
+## When the name decides, not the shape of the value
+
+The two tiers above look at the value. A third looks at the name: a classic
+Atlassian API token is 24 characters of letters and digits — the same shape as a
+build id, a short hash or a bucket name. Shape decides nothing there; the name
+does.
+
+A value is masked when its variable name contains one of these as a whole
+component:
+
+```
+PASSWD  PASSWORD  PASSPHRASE  TOKEN  SECRET  API_KEY  APIKEY
+AUTH_TOKEN  ACCESS_KEY  SECRET_KEY  CLIENT_SECRET  PRIVATE_KEY  CREDENTIAL
+```
+
+A whole component between `_` separators, not a substring: matched as a
+substring, `PASS` masked `BYPASS_CACHE` and `PASSENGER_ROOT`. Three exemptions
+keep the tier from eating half the environment:
+
+- a value shorter than eight characters — which is what keeps
+  `TOKENIZERS_PARALLELISM=false` readable;
+- a value that looks like a path (`/x`, `./x`, `~/x`, `C:\x`) — a path is
+  configuration, not a secret;
+- `true`, `false`, `yes`, `no`, `on`, `off`, or a number.
+
+Two variables with the **same** value show it:
+
+```
+HW_SECRET_KEY=<masked>             BUILD_ID=abc123XYZ456def7
+```
+
+The tier lives in `bin/safe-env` (`CRED` and the `named_credential` function)
+and in `bin/safe-env.ps1`. For `secrets-redact` the label on the line plays the
+part the name plays here — that is the next section.
 
 ## The same shapes in command output
 
@@ -116,12 +152,23 @@ $env:SAMPLE = 'glpat-EXAMPLEEXAMPLEEXAMPLE1234'
 
 ## Adding a format
 
-Two files, and they must stay in step:
+Four places, and which one is yours depends on the kind of rule:
 
-- `bin/safe-env` — the `RE` string in the `BEGIN` block of the awk program
-- `bin/safe-env.ps1` — the `$patterns` array
+- **a provider prefix** (`ghp_`, `glpat-`) — the `RE` string in the `BEGIN`
+  block of the awk program in `bin/safe-env`, and the `$patterns` array in
+  `bin/safe-env.ps1`;
+- **a shape with no prefix** — the `if (val ~ …)` ladder in `bin/safe-env` and
+  the `$fallbacks` array in the port;
+- **a variable name** — `CRED` in `bin/safe-env` and its counterpart in the port;
+- **a rule the redactor must not have** — beside the list rather than inside it,
+  which is where `$sqlPassword` sits, because `tests/test_redact.sh` compares the
+  two implementations' lists character for character.
 
-Add the same expression to both, then test with a constructed sample as above.
+Plus a row in the table in `tests/test_parity_safe_env.sh`: that is where a new
+rule proves both implementations answer the same.
+
+Add the same expression to both files of your tier, then test with a constructed
+sample as above.
 A format present in one file and missing from the other is worse than absent
 from both: it produces a machine where the behaviour depends on the operating
 system, and nobody expects that.
@@ -138,7 +185,7 @@ paths that must be denied and a few that must not.
 The files treated as secret stores:
 
 ```
-*.env  *.pem  *.key  *.p12  *.pfx  *id_rsa*  *id_ed25519*  *id_ecdsa*
+.env   *.pem  *.key  *.p12  *.pfx  *id_rsa*  *id_ed25519*  *id_ecdsa*
 .aws/credentials  .docker/config.json  .kube/config  .azure/
 .git-credentials  .npmrc  .pypirc  .pgpass  .my.cnf
 ~/.bashrc  ~/.zshrc  ~/.profile  ~/.bash_profile  ~/.zshenv  ~/.netrc
@@ -153,6 +200,21 @@ helm/registry/config.json
 
 Either path separator is accepted, so the Windows form of the same store —
 `C:\Users\you\.aws\credentials` — is matched as readily as the Unix one.
+
+**`.env` on the first row is not a glob, unlike every one of its neighbours.**
+The hooks need a boundary on its left — a space, a quote, a slash or an `=`. So
+`cat .env`, `cat /srv/app/.env`, `cat .env.local` and `cat .env.production` are
+denied, while `cat prod.env`, `cat secrets.env` and `head config/production.env`
+go through. The boundary is not an oversight: without it the guard denied
+`jq -r '.permission.bash.env' opencode.json | head`, where `.env` is part of a
+config key rather than a filename (`docs/design.en.md`).
+
+**Here too the implementations answer differently.** Opencode takes its rules
+from `SECRET_FILES` in `lib/patch_config.py`, and that list carries a real glob
+`*.env` — so Opencode denies `cat prod.env` and both hooks allow it. The split
+was measured, not inferred: `tests/test_policy.sh` reports it as soon as
+`prod.env` is added to the shared list. Until it is resolved, treat only a file
+named `.env` as covered.
 
 Two rows are enforced by Opencode alone. `*credentials*` and `*secrets*` are
 broad enough to be useful as a prompt and wrong as a hard deny: in the hooks
