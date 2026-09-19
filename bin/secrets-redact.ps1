@@ -75,9 +75,9 @@ $Label = '(--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
          'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|' +
          'client[-_]?secret|private[-_]?key|credential|authorization|' +
          # SQL says it in two words: CREATE USER … IDENTIFIED BY '…', the same
-         # spelling in Oracle, MySQL and MariaDB. Ported from the kb scanner,
-         # which had this one and not the three provider prefixes this file
-         # has — the two lists are kept in step by hand, both directions.
+         # spelling in Oracle, MySQL and MariaDB. `bin/safe-env` has carried
+         # this rule since the first commit and the redactor did not — the
+         # shape of drift two implementations of one policy produce in silence.
          'identified[ \t]+by|' +
          # Cloud keys with no distinctive prefix. AWS is covered by tier 1
          # (AKIA…), Huawei and OpenStack are not: their access key is 20

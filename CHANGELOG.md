@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.6 — 2026-09-19
+
+### Documentation
+
+- **No references to another repository.** Both READMEs, three comments and the
+  0.8.5 section below named a separate project as where the SQL rule came from.
+  A reader of this repository cannot check such a claim without leaving it, and
+  a link between two projects that release independently goes stale on
+  whichever side moves first. The reason each rule exists stays beside the
+  rule — for the SQL clause that reason is `bin/safe-env`, in this repository,
+  which had the rule while the redactor did not.
+
 ## 0.8.5 — 2026-09-19
 
 ### Added
@@ -14,14 +26,12 @@
 
 ### Documentation
 
-- **Both READMEs now say that kb keeps a second copy of this pattern list and
-  that the two are compared by hand.** Inside this repository a copy would be a
-  defect, which is why `tools/scan-transcripts` calls `secrets-redact --filter`
-  instead of holding patterns; kb cannot do that, since it installs alone, uses
-  the Python standard library only and runs where env2hell is absent. The
-  comparison has now paid in both directions: kb was missing `glpat-`, `tvly-`
-  and `ATATT` and read a model name as an OpenAI key, this file was missing the
-  SQL clause.
+- **Both READMEs now say that a pattern is not added without a test naming the
+  shape**, and that the shapes which must not fire are tested too. The SQL
+  clause above is the case that shows why: one implementation of a policy had
+  the rule, the other did not, and nothing was going to notice. That is the
+  same reason `tools/scan-transcripts` calls `secrets-redact --filter` rather
+  than holding patterns of its own.
 
 ## 0.8.4 — 2026-09-19
 

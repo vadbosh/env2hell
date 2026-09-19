@@ -169,9 +169,10 @@ check_labelled "api_key=$HEX"   'api_key='
 # has to be in the label list — and these names are written in upper case
 # everywhere they appear, which is what made the case bug expensive.
 # SQL names the password in two words, and the statement is quoted verbatim in
-# a runbook, a migration and every "how do I reset it" answer. Imported from the
-# kb scanner, which carried this shape while this file carried three provider
-# prefixes it did not — the two lists are compared by hand, in both directions.
+# a runbook, a migration and every "how do I reset it" answer. `bin/safe-env`
+# has masked it since the first commit while the redactor did not — a rule in
+# one implementation of a policy and not the other, which is what the parity
+# suites exist to surface.
 #
 # Both cases quote the value with `'`, because hook_out interpolates the line
 # into a JSON string unescaped: a literal `"` in the payload makes the JSON
