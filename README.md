@@ -329,6 +329,19 @@ now and finding out never.
   environment at start-up, so removing a variable from `.bashrc` does not
   remove it from a running session — see [design](docs/design.en.md).
 
+## Sending a change
+
+Commit messages are written in English, body included. The history is the only
+place the reason for a change survives, and whoever can read the code can read
+the message.
+
+Ten messages from 2026-09-18 were Russian and were rewritten in English on
+2026-09-19. Three older ones quote Russian documentation and keep the
+quotations, because there the Russian is the subject.
+
+The documentation itself is bilingual and stays that way: `README.md` and
+`README.RU.md`, `docs/*.en.md` and `docs/*.ru.md`, edited as pairs.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
