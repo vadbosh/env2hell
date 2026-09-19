@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.4 — 2026-09-19
+
+### Documentation
+
+- **A heading in the English README was in Russian.** "Как env2hell
+  встраивается в ассистента" sat above the table of hooks and matchers; it now
+  reads "How env2hell is wired into an assistant". The 0.6.3 entry below shows
+  where it came from: that release renamed the pair, wrote the Russian text
+  into both files, and its own changelog line records the English heading as
+  having been moved "and its English pair" — the pair that never landed. Both
+  files were read after the edit, and the English README now carries no Russian
+  outside the link to its own translation.
+
 ## 0.8.3 — 2026-09-18
 
 ### Fixed
