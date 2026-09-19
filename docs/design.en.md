@@ -247,7 +247,9 @@ wherever they appear. The pattern list is character-for-character the one in
 
 **Tier 2, labelled values.** A high-entropy run is masked only when something
 on the same line calls it a secret — `--pass`, `--token`, `password=`,
-`api_key=`, `Authorization: Bearer`. The label is doing real work here. The
+`api_key=`, `Authorization: Bearer`, and since 0.8.5 the SQL spelling
+`IDENTIFIED BY '…'`, which `safe-env` had from the first commit and the
+redactor did not. The label is doing real work here. The
 password this hook was written for was 32 hex characters, and so is every md5
 in the session:
 

@@ -94,6 +94,7 @@ before the model read the result. What it masks:
 --pass VALUE            password=VALUE          TOKEN: VALUE
 --token VALUE           api_key=VALUE           Authorization: Bearer VALUE
 ghp_… glpat-… AKIA…     eyJ….eyJ….              https://user:pw@host
+CREATE USER app IDENTIFIED BY 'VALUE'
 ```
 
 What it deliberately leaves alone:
@@ -341,6 +342,18 @@ quotations, because there the Russian is the subject.
 
 The documentation itself is bilingual and stays that way: `README.md` and
 `README.RU.md`, `docs/*.en.md` and `docs/*.ru.md`, edited as pairs.
+
+**A second copy of the pattern list lives in
+[kb](https://github.com/vadbosh/kb), and the two are compared by hand.** Inside
+this repository a copy would be a defect — `tools/scan-transcripts` calls
+`secrets-redact --filter` rather than holding patterns of its own, because a
+copy drifts within a release. kb is a different program: it installs alone,
+uses the Python standard library only, and runs on machines where env2hell is
+absent, so it cannot call anything here. Both directions of that comparison
+have already paid: kb was missing `glpat-`, `tvly-` and `ATATT` and was reading
+a model name as an OpenAI key, while this repository was missing the SQL
+spelling that `safe-env` had carried since the first commit. Each import lands
+with a test naming the shape, including the shapes that must not fire.
 
 ## Licence
 

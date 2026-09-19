@@ -168,6 +168,19 @@ check_labelled "api_key=$HEX"   'api_key='
 # identifiers in ordinary output. The variable name is the only signal, so it
 # has to be in the label list — and these names are written in upper case
 # everywhere they appear, which is what made the case bug expensive.
+# SQL names the password in two words, and the statement is quoted verbatim in
+# a runbook, a migration and every "how do I reset it" answer. Imported from the
+# kb scanner, which carried this shape while this file carried three provider
+# prefixes it did not — the two lists are compared by hand, in both directions.
+#
+# Both cases quote the value with `'`, because hook_out interpolates the line
+# into a JSON string unescaped: a literal `"` in the payload makes the JSON
+# invalid, the tool declines to parse it, and the result reads as "the hook
+# masked nothing". The double-quoted spelling is covered through --filter
+# below, where no JSON is involved.
+check_labelled "CREATE USER app IDENTIFIED BY '$HEX';"  'IDENTIFIED BY'
+check_labelled "alter user app identified by '$HEX';"   'identified by'
+
 check_labelled "HW_ACCESS_KEY=$HEX"          'HW_ACCESS_KEY='
 check_labelled "HW_SECRET_KEY: $HEX"         'HW_SECRET_KEY:'
 check_labelled "OS_SECRET_KEY=$HEX"          'OS_SECRET_KEY='
@@ -461,6 +474,14 @@ check_shape keep 'the token configuration lives in git'           'a long word a
 check_shape keep 'pass the credentials file to the job'           'the same, another label'
 check_shape mask 'password = "S3cr3t!Pass"'                       'a short password, but quoted'
 check_shape keep 'password=Tr0ub4dor'                             'a short password, unquoted: the accepted gap'
+
+# The SQL spelling, through --filter where no JSON escaping is in the way, so
+# the double-quoted form can be asserted too. The last line is the reason the
+# label needs a quoted value beside it: the statement is quoted in prose far
+# more often than it is run.
+check_shape mask "CREATE USER app IDENTIFIED BY 'Tr0ub4dor-and-horse'" 'a SQL password, single-quoted'
+check_shape mask 'ALTER USER app IDENTIFIED BY "Tr0ub4dor-and-horse"' 'a SQL password, double-quoted'
+check_shape keep 'the syntax is IDENTIFIED BY followed by a quoted password' 'the SQL clause named in prose'
 
 check_shape mask "croc --pass $HEX code"                         'a labelled hex password'
 check_shape mask "TOKEN: $HEX"                                   'an uppercase label'

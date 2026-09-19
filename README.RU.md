@@ -94,6 +94,7 @@ On the other computer, run:
 --pass VALUE            password=VALUE          TOKEN: VALUE
 --token VALUE           api_key=VALUE           Authorization: Bearer VALUE
 ghp_… glpat-… AKIA…     eyJ….eyJ….              https://user:pw@host
+CREATE USER app IDENTIFIED BY 'VALUE'
 ```
 
 Что он намеренно оставляет как есть:
@@ -349,6 +350,18 @@ value has to be rotated.
 
 Сама документация двуязычная и такой остаётся: `README.md` и `README.RU.md`,
 `docs/*.en.md` и `docs/*.ru.md` правятся парами.
+
+**Вторая копия списка шаблонов живёт в [kb](https://github.com/vadbosh/kb), и
+сверяют их руками.** Внутри этого репозитория копия была бы дефектом:
+`tools/scan-transcripts` не держит своих шаблонов, а вызывает
+`secrets-redact --filter`, потому что копия расходится в пределах одного
+выпуска. kb — другая программа: ставится отдельно, живёт на одной стандартной
+библиотеке Python и работает там, где env2hell нет, поэтому позвать сюда не
+может. Сверка уже окупилась в обе стороны: в kb не было `glpat-`, `tvly-` и
+`ATATT`, а имя модели читалось как ключ OpenAI; здесь не было записи SQL,
+которую `safe-env` нёс с первого коммита. Каждый перенос приходит вместе с
+тестом, который называет форму, — включая формы, которые срабатывать не
+должны.
 
 ## Лицензия
 

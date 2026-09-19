@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8.5 — 2026-09-19
+
+### Added
+
+- **The SQL spelling of a password — `IDENTIFIED BY '…'` — is masked by the
+  redactor.** `safe-env` beside it has carried that rule since the first
+  commit, and the redactor never had it: the statement is quoted verbatim in
+  runbooks, migrations and every "how do I reset it" answer, which is output a
+  tool prints and a hook sees. Label tier, so the value still needs to be
+  quoted beside it — the clause named in prose is left alone. Both ports, and
+  `tests/test_redact.sh` covers both quote characters.
+
+### Documentation
+
+- **Both READMEs now say that kb keeps a second copy of this pattern list and
+  that the two are compared by hand.** Inside this repository a copy would be a
+  defect, which is why `tools/scan-transcripts` calls `secrets-redact --filter`
+  instead of holding patterns; kb cannot do that, since it installs alone, uses
+  the Python standard library only and runs where env2hell is absent. The
+  comparison has now paid in both directions: kb was missing `glpat-`, `tvly-`
+  and `ATATT` and read a model name as an OpenAI key, this file was missing the
+  SQL clause.
+
 ## 0.8.4 — 2026-09-19
 
 ### Documentation
