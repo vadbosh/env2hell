@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.9.0 — 2026-09-21
+
+### Fixed
+
+- **A short password with a label beside it is masked now.** On 2026-09-21 a
+  docker-compose comment came back from a remote host through ssh:
+
+  ```
+  # - BasicAuth__Password=<10 characters, mixed case and digits>
+  ```
+
+  The value reached the transcript. The hook was installed, wired to `Bash` and
+  working — three other values in the same session were masked correctly. What
+  decided it was length alone: the floor for an unquoted value was 16, and the
+  floor had no exception underneath it. That gap was deliberate and had a test
+  pinning it (`password=Tr0ub4dor` was asserted to pass through); it stopped
+  being acceptable the moment it cost a real credential.
+
+  A short unquoted value is now decided by composition instead: lower case,
+  upper case and a digit together is what a generated credential looks like and
+  what prose does not. Measured before shipping — 40 transcripts of this
+  machine's own sessions: zero new matches; the transcript of the leak: the
+  value, twice. `token: deploy_v2`, `secret: utf8mb4`, `key: main-2026` and
+  `password = hello-world` still go through, each missing one of the three
+  classes. The price is stated rather than hidden, and pinned by a test:
+  `token=Release2026` is a tag name and is now masked.
+
+  Above 16 characters nothing changed, and a quoted value is untouched by this:
+  inside quotes the writer has already said where the value ends, so its floor
+  stays 8 and its composition is not examined.
+
+### Added
+
+- **A journal: `~/.local/state/env2hell/redact.log`.** One line per
+  invocation — time, mode, tool, bytes in, whether anything was masked — and
+  never a value. It exists because the leak above could not be diagnosed from
+  outside: "the hook never ran", "it ran and matched nothing" and "it ran and
+  the host ignored the replacement" all leave the same trace, which is none.
+  Half a day of investigation went where one line would have answered in a
+  second. Failure is silent and never blocks masking; the file rotates at 1 MB.
+  `ENV2HELL_LOG=off` disables it, `ENV2HELL_LOG=<path>` moves it, and both
+  implementations write the same format to the same place.
+- **Two test cases for the shape the leak actually had**: a value inside a
+  multi-line tool result, asserting both that the value is gone and that its
+  neighbouring lines survived; and a value in the stdout of another process,
+  since a result carrying the output of `ssh`, `docker` or `kubectl` is the
+  commonest way another machine's configuration enters a session.
+
 ## 0.8.6 — 2026-09-19
 
 ### Documentation

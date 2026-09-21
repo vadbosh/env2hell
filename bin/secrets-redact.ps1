@@ -95,7 +95,13 @@ $Value = '[A-Za-z0-9+/=_.~-]{16,}'
 # the value ends, so the quotes are the boundary. 8 is the floor there: a quoted
 # run is far less ambiguous than a bare one.
 $Quoted = '"[^"\n]{8,}"|''[^''\n]{8,}'''
-$AnyVal = '(?:' + $Quoted + '|' + $Value + ')'
+# Below the floor, and unquoted. The floor of 16 held until 2026-09-21, when a
+# 10-character password in a docker-compose comment went through a hook that was
+# installed, wired and working. A short value is admitted here and decided by
+# composition in Test-KeepBare: lower case, upper case and a digit together is
+# what a generated credential looks like and what prose does not.
+$Short  = '[A-Za-z0-9._~+/-]{8,15}'
+$AnyVal = '(?:' + $Quoted + '|' + $Value + '|' + $Short + ')'
 
 # The label is matched without regard to case. `TOKEN: 6310…` is how a token
 # appears in most output there is — an env dump, a config echo, a CI log — and
@@ -150,6 +156,19 @@ function Test-Name([string]$Value) {
     return $false
 }
 
+# The unquoted branch of tier 2. A quoted value is not decided here: the writer
+# has already said where it begins and ends, so its floor stays 8 and its
+# composition is not examined.
+function Test-KeepBare([string]$Value) {
+    if (Test-Name $Value)     { return $true }
+    if ($Value.Length -ge 16) { return $false }   # the old floor, unchanged
+    # Short and unquoted: mask only what reads as generated. `Tr0ub4dor` is a
+    # password by this rule and was deliberately left alone before 0.9.0 -- the
+    # gap that cost a real credential. `deploy_v2`, `main-2026` and `utf8mb4`
+    # are not, because each is missing one of the three classes.
+    return -not ($Value -cmatch '[a-z]' -and $Value -cmatch '[A-Z]' -and $Value -cmatch '[0-9]')
+}
+
 $script:Hits = 0
 
 function Get-Mask([string]$Value) { "<REDACTED:$($Value.Length)>" }
@@ -200,7 +219,10 @@ function Edit-Line([string]$Line) {
                 $q = [string]$v[0]
                 $v = $v.Substring(1, $v.Length - 2)
             }
-            if (Test-Name $v) { return $m.Value }     # a name, not a value
+            # A quoted value only has to clear Test-Name; an unquoted one is
+            # also judged on length and composition.
+            $keep = if ($q) { Test-Name $v } else { Test-KeepBare $v }
+            if ($keep) { return $m.Value }            # a name, not a value
             $script:Hits++
             $m.Groups['head'].Value + $q + (Get-Mask $v) + $q
     })
@@ -242,6 +264,31 @@ function Edit-Text([string]$Text) {
 
 function Read-Stdin { $input_ = [Console]::In.ReadToEnd(); return $input_ }
 
+# ── the journal ─────────────────────────────────────────────────────────────
+# One line per invocation, never a value. It exists because of 2026-09-21: from
+# outside the process, "the hook was never called", "it was called and matched
+# nothing" and "it was called and the host ignored the replacement" all look
+# identical — like nothing at all. The POSIX side writes the same format to the
+# same file, so one reader answers for both.
+$script:LogPath = if ($env:ENV2HELL_LOG) { $env:ENV2HELL_LOG }
+                  elseif ($env:XDG_STATE_HOME) { Join-Path $env:XDG_STATE_HOME 'env2hell/redact.log' }
+                  elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'env2hell\redact.log' }
+                  else { Join-Path $HOME '.local/state/env2hell/redact.log' }
+function Write-Journal([string]$Mode, [string]$Tool, $Bytes) {
+    if ($script:LogPath -eq 'off') { return }
+    try {
+        $dir = Split-Path -Parent $script:LogPath
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $max = if ($env:ENV2HELL_LOG_MAX) { [int]$env:ENV2HELL_LOG_MAX } else { 1048576 }
+        if ((Test-Path $script:LogPath) -and (Get-Item $script:LogPath).Length -gt $max) {
+            Move-Item -Force $script:LogPath "$($script:LogPath).1"
+        }
+        $stamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $masked = if ($script:Hits -gt 0) { 'yes' } else { 'no' }
+        Add-Content -Path $script:LogPath -Value "$stamp mode=$Mode tool=$Tool bytes=$Bytes masked=$masked"
+    } catch { }      # a read-only log directory must never break masking
+}
+
 $mode = if ($args.Count -gt 0) { [string]$args[0] } else { '' }
 
 # ── self-test ───────────────────────────────────────────────────────────────
@@ -262,6 +309,7 @@ if ($mode -eq '--self-test') {
 if ($mode -eq '--filter') {
     $text = Read-Stdin
     [Console]::Out.Write((Edit-Text $text))
+    Write-Journal 'filter' '-' $text.Length
     exit $(if ($script:Hits -gt 0) { 0 } else { 1 })
 }
 
@@ -272,6 +320,21 @@ if ([string]::IsNullOrEmpty($raw)) { exit 0 }
 try { $payload = $raw | ConvertFrom-Json } catch { exit 0 }   # fail open
 if ($null -eq $payload) { exit 0 }
 
+# Named before anything can bail out, and written by a trap-equivalent at the
+# end of every path below: a call that produced no line is a call that never
+# reached the hook, which is exactly the distinction that was missing.
+$script:LogMode = if ($mode -eq '--warn-only') { 'warn' } else { 'hook' }
+$script:LogTool = try { if ($payload.tool_name) { [string]$payload.tool_name } else { '-' } } catch { '-' }
+$script:LogBytes = $raw.Length
+# An explicit call rather than a trap or an exiting-event handler: `exit` is not
+# a terminating error, so a trap never runs, and the engine-exiting event does
+# not fire when the script is dot-sourced into a host -- which is how the test
+# suites call it. Every path out of hook mode goes through this.
+function Exit-Hook([int]$Code = 0) {
+    Write-Journal $script:LogMode $script:LogTool $script:LogBytes
+    exit $Code
+}
+
 $resp = $null
 try { $resp = $payload.tool_response } catch { $resp = $null }
 
@@ -281,7 +344,7 @@ try { $resp = $payload.tool_response } catch { $resp = $null }
 # no field that would replace a result.
 $errText = $null
 try { $errText = $payload.error } catch { $errText = $null }
-if ($null -eq $resp -and $errText -isnot [string]) { exit 0 }
+if ($null -eq $resp -and $errText -isnot [string]) { Exit-Hook 0 }
 
 $ctx = '[secrets-redact] A secret-shaped value in this output was replaced ' +
        'with <REDACTED:length>. Do not try to recover it, and do not print ' +
@@ -332,9 +395,9 @@ if ($mode -eq '--warn-only') {
     if ($errText -is [string]) { $parts += $errText }
     if ($null -ne $resp)       { $parts += Get-Strings $resp }
     $text = ($parts -join "`n")
-    if ($text -eq '') { exit 0 }
+    if ($text -eq '') { Exit-Hook 0 }
     $null = Edit-Text $text
-    if ($script:Hits -le 0) { exit 0 }
+    if ($script:Hits -le 0) { Exit-Hook 0 }
     # Named back exactly as it arrived: a hook wired to PostToolUseFailure that
     # answers "PostToolUse" is answering a question nobody asked, and the reply
     # is dropped.
@@ -350,7 +413,7 @@ if ($mode -eq '--warn-only') {
                 'produced it, and tell the user the value has to be rotated.'
         }
     } | ConvertTo-Json -Depth 20 -Compress
-    exit 0
+    Exit-Hook 0
 }
 
 # A result arrives in one of four shapes, and they are not interchangeable —
@@ -378,13 +441,13 @@ $shape =
     elseif ($content -is [string])                     { 'content' }
     else                                               { 'other'   }
 
-if ($shape -eq 'other' -or $null -eq $resp) { exit 0 }
+if ($shape -eq 'other' -or $null -eq $resp) { Exit-Hook 0 }
 
 try {
     switch ($shape) {
         'string' {
             $new = Edit-Text $resp
-            if ($script:Hits -le 0) { exit 0 }
+            if ($script:Hits -le 0) { Exit-Hook 0 }
             $updated = $new
         }
         'streams' {
@@ -392,7 +455,7 @@ try {
             $e = if ($stderr -is [string]) { $stderr } else { '' }
             $no = Edit-Text $o
             $ne = Edit-Text $e
-            if ($script:Hits -le 0) { exit 0 }
+            if ($script:Hits -le 0) { Exit-Hook 0 }
             # Rebuild from the original tool_response so fields this hook knows
             # nothing about survive intact.
             $resp.stdout = $no
@@ -401,13 +464,13 @@ try {
         }
         'file' {
             $nf = Edit-Text $fileC
-            if ($script:Hits -le 0) { exit 0 }
+            if ($script:Hits -le 0) { Exit-Hook 0 }
             $file.content = $nf
             $updated = $resp
         }
         'content' {
             $nc = Edit-Text $content
-            if ($script:Hits -le 0) { exit 0 }
+            if ($script:Hits -le 0) { Exit-Hook 0 }
             $resp.content = $nc
             $updated = $resp
         }
@@ -421,7 +484,7 @@ try {
         }
     } | ConvertTo-Json -Depth 20 -Compress
 } catch {
-    exit 0            # fail open, never break the session
+    Exit-Hook 0            # fail open, never break the session
 }
 
-exit 0
+Exit-Hook 0

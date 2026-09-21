@@ -474,7 +474,32 @@ fi
 check_shape keep 'the token configuration lives in git'           'a long word after a label, in prose'
 check_shape keep 'pass the credentials file to the job'           'the same, another label'
 check_shape mask 'password = "S3cr3t!Pass"'                       'a short password, but quoted'
-check_shape keep 'password=Tr0ub4dor'                             'a short password, unquoted: the accepted gap'
+check_shape mask 'password=Tr0ub4dor'                             'a short password, unquoted: was the accepted gap until 0.9.0'
+
+# 2026-09-21: the gap above stopped being acceptable. A docker-compose comment
+# came back from a remote host through ssh with
+#
+#   # - BasicAuth__Password=<10 characters, mixed case and digits>
+#
+# and the value reached the transcript because 10 is under the floor of 16. The
+# hook was installed, wired to Bash and working: three other values in the same
+# session were masked correctly. Only length decided it.
+#
+# So a short unquoted value is now decided by composition instead: lower, upper
+# and a digit together. Both directions are pinned, because the floor exists to
+# protect ordinary words after a label and that protection must survive.
+check_shape mask '      # - BasicAuth__Password=Ab3xKp9Qz7'       'the leak of 2026-09-21, exactly as it arrived'
+check_shape mask 'DB_PASSWORD=Xy7kLm2pQ'                          'a short generated password'
+check_shape keep 'token: deploy_v2'                               'a short value with no upper case'
+check_shape keep 'secret: utf8mb4'                                'a short value with no upper case, again'
+check_shape keep 'password = hello-world'                         'two ordinary words'
+check_shape keep 'api_key: MAIN_BRANCH'                           'a short value with no lower case'
+# The cost of the rule, stated rather than hidden: `token=Release2026` carries
+# all three classes and is masked, though it is a tag name. The trade was made
+# knowing this -- a masked tag costs a re-read, a leaked password costs a
+# rotation -- and it is pinned here so that anyone loosening the rule sees what
+# they are buying back.
+check_shape mask 'token=Release2026'                              'a release tag: the false positive this rule accepts'
 
 # The SQL spelling, through --filter where no JSON escaping is in the way, so
 # the double-quoted form can be asserted too. The last line is the reason the
@@ -651,6 +676,70 @@ elif grep -q "$GHP" <<< "$bigout"; then
 else
     ok "masks a 200 KB stdout — past the 128 KB argument limit"
 fi
+
+# ── the shape the 2026-09-21 leak actually arrived in ───────────────────────
+# Everything above hands the hook one line. The leak came as sixty lines of
+# somebody else's docker-compose, printed by ssh into a heredoc, with the
+# password on line forty. The investigation could not tell "the pattern did not
+# match" from "the hook was not called", so both are asserted here: the value
+# is gone AND the lines around it came back untouched.
+multi="$(printf 'services:\n  api:\n    image: registry/app:2026-09\n    environment:\n      # - BasicAuth__Password=Ab3xKp9Qz7\n      - ASPNETCORE_URLS=http://+:8080\n' |
+         jq -Rs .)"
+mout="$(printf '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_response":{"stdout":%s,"stderr":"","interrupted":false}}' "$multi" |
+        run_tool | jq -r '.hookSpecificOutput.updatedToolOutput.stdout // empty' 2>/dev/null)"
+if [ -z "$mout" ]; then
+    no "masks a value inside a multi-line tool result" "the hook issued no replacement at all"
+elif grep -q 'Ab3xKp9Qz7' <<< "$mout"; then
+    no "masks a value inside a multi-line tool result" "the raw value reached the output"
+elif ! grep -q 'ASPNETCORE_URLS=http://+:8080' <<< "$mout"; then
+    no "masks a value inside a multi-line tool result" "the neighbouring lines did not survive"
+else
+    ok "masks a value inside a multi-line tool result, leaving its neighbours"
+fi
+
+# Output that the command did not produce itself. A tool result carrying the
+# stdout of ssh, docker or kubectl is the commonest way another machine's
+# configuration enters a session, and the hook sees a string either way -- this
+# asserts that there is no path where it does not.
+foreign="$(sh -c 'printf "remote:\n  # - BasicAuth__Password=Ab3xKp9Qz7\n"')"
+fout="$(printf '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_response":{"stdout":%s,"stderr":""}}' "$(printf '%s' "$foreign" | jq -Rs .)" |
+        run_tool | jq -r '.hookSpecificOutput.updatedToolOutput.stdout // empty' 2>/dev/null)"
+if [ -n "$fout" ] && ! grep -q 'Ab3xKp9Qz7' <<< "$fout"; then
+    ok "masks a value in the stdout of another process"
+else
+    no "masks a value in the stdout of another process" "the value survived, or nothing was replaced"
+fi
+
+# ── the journal ─────────────────────────────────────────────────────────────
+# Added after 2026-09-21, when a leak could not be diagnosed because "the hook
+# never ran" and "it ran and matched nothing" leave the same trace: none. One
+# line per invocation, and never a fragment of the input -- a log that quotes
+# what it masked is a second copy of the secret, in a file nobody watches.
+#
+# POSIX only, and the reason is the harness rather than the port: the pwsh side
+# runs through one long-lived server process started before these lines, so a
+# variable exported for a single call never reaches it. The port writes the same
+# format to the same file -- checked by hand with
+# `ENV2HELL_LOG=… pwsh -File bin/secrets-redact.ps1 --filter`.
+jlog="$(mktemp -u)"
+if [ "$PORT" = "pwsh" ]; then
+    ok "journal: skipped on the pwsh port — per-call env cannot reach its server"
+else
+ENV2HELL_LOG="$jlog" run_tool --filter <<< "password=Ab3xKp9Qz7" >/dev/null 2>&1
+ENV2HELL_LOG="$jlog" run_tool <<< '{"tool_name":"Read","tool_response":{"stdout":"nothing to see"}}' >/dev/null 2>&1
+if [ ! -s "$jlog" ]; then
+    no "writes one journal line per invocation" "nothing was written to $jlog"
+elif [ "$(wc -l < "$jlog")" -ne 2 ]; then
+    no "writes one journal line per invocation" "got $(wc -l < "$jlog") lines for two calls"
+elif grep -q 'Ab3xKp9Qz7' "$jlog"; then
+    no "the journal never holds a value" "the masked value is in the log"
+elif grep -q 'masked=yes' "$jlog" && grep -q 'masked=no' "$jlog"; then
+    ok "writes one journal line per invocation, recording whether anything was masked"
+else
+    no "the journal distinguishes a hit from a miss" "$(cat "$jlog")"
+fi
+fi
+rm -f "$jlog"
 
 warned="$(printf '{"tool_response":"https://oauth2:%s@example/x.git"}' "$GLPAT" | run_tool --warn-only)"
 if grep -q "$GLPAT" <<< "$warned"; then

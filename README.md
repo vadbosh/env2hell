@@ -324,6 +324,20 @@ now and finding out never.
   instead of a token written into a remote URL.
 - The redactor needs a label. An unlabelled secret that looks like ordinary text
   — a passphrase of three English words, say — passes through untouched.
+- **A labelled value is also judged on its shape, and the shape has a floor.**
+  Unquoted, 16 characters or more is masked outright; below that it is masked
+  only when it mixes lower case, upper case and digits. `password=hunter2` and
+  `token: deploy_v2` therefore go through. Until 0.9.0 the floor was 16 with
+  nothing underneath it, and a 10-character password in a docker-compose
+  comment reached a transcript on 2026-09-21 — the change came from that leak.
+  Quoting the value removes the doubt: inside quotes the floor is 8 and the
+  composition is not examined.
+- **What the hook did is in `~/.local/state/env2hell/redact.log`**, one line per
+  invocation: time, mode, tool, bytes in, whether anything was masked. Never a
+  value. Without it, "the hook never ran", "it ran and matched nothing" and "it
+  ran and the host ignored the replacement" are one observation — nothing —
+  which is what made the 2026-09-21 leak take half a day to explain.
+  `ENV2HELL_LOG=off` turns it off, `ENV2HELL_LOG=<path>` moves it.
 - It is a filter, not a sandbox. It raises the cost of the common accident; it
   is not a defence against someone deliberately extracting a value.
 - A key already in the environment stays there. Assistants snapshot their
