@@ -43,3 +43,5 @@ Thumbs.db
 # and the tests cite them by name where an item explains a decision; those
 # citations point at a file kept alongside the checkout, not inside it.
 review-*.md
+finding-*.txt
+finding-*.md
