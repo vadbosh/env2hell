@@ -126,6 +126,7 @@ $GuardTimeout = 30
 # a comment saying "keep these in step" is what failed last time. The port went
 # without the notice entry from 2026-09-14 until 2026-09-16, so a Windows user
 # editing a .env got no warning at all.
+$GuardMatcher   = 'Bash|Read'
 $RedactMatcher  = 'Bash|Read|Grep'
 $NoticeMatcher  = 'Edit|Write|mcp__.*'
 $FailureMatcher = 'Bash|Read|Grep|Edit|Write|mcp__.*'
@@ -221,14 +222,18 @@ function Update-HookConfig ($Name, $Path, $GuardPath) {
         Set-Property $data.hooks 'PreToolUse' @()
     }
 
-    $matcher = if ($Name -eq 'codex') { '^Bash$' } else { 'Bash' }
+    $matcher = if ($Name -eq 'codex') { '^Bash$' } else { $GuardMatcher }
     $entries = @($data.hooks.PreToolUse)
     $already = $entries | Where-Object {
         $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-guard' }
     }
     if ($already) {
         $fixed = 0
-        foreach ($e in $already) { $fixed += Update-Timeout $e 'secrets-guard' $GuardTimeout }
+        foreach ($e in $already) {
+            $fixed += Update-Timeout $e 'secrets-guard' $GuardTimeout
+            # An install from before 0.10.0 is wired for Bash alone.
+            if ($e.matcher -ne $matcher) { $e.matcher = $matcher; $fixed += 1 }
+        }
         if ($fixed -eq 0) { Say '    = already wired'; return }
         Write-Json $Path $data
         Say $(if ($DryRun) { "    would set the guard timeout to $GuardTimeout" }

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.10.0 — 2026-09-25
+
+### Added
+
+- **Pass E: a file is looked at before a reader prints it.** For `cat`,
+  `head`, `tail`, `less`, `bat`, `nl`, `od` and `sed` without `-i`, every
+  argument that names an existing file is run through `secrets-redact --filter`
+  first; a line it changes denies the command, and the message names the file
+  and the line numbers, never the value. Only the lines the command prints
+  count — `head -5`, `tail -n 20`, `tail -n +40`, `sed -n '10,20p'` — so a key on
+  line 400 does not block a look at the first five. The grep family is left
+  alone: it prints matches, not the file. This is the one place a value in an
+  ordinary file can be stopped in Codex, whose hooks cannot replace output.
+  Files over `SECRETS_GUARD_SCAN_MAX` bytes (1 MiB) and non-literal paths are
+  skipped; no redactor, no pass. Both implementations.
+- **The Read tool is judged by its path.** Claude Code's guard hook is wired
+  for `Bash|Read`, the Opencode plugin for `bash` and `read`. A Read of a known
+  credential store — the list `cat` is judged by: `.env`, private keys,
+  `~/.aws/credentials` and the rest — is denied before the file is opened. The
+  content is not examined, so a file of test keys stays readable and therefore
+  editable. Re-running the installer widens an existing `Bash` entry.
+
+### Fixed
+
+- **`--warn-only` no longer counts an Edit's `originalFile`.** Claude Code hands
+  the hook the whole file there and keeps none of it: the transcript stores the
+  field empty, beside `contentNotInModelContext`. Measured 2026-09-25: an edit
+  of a test file drew "17 credential-shaped values, already in the transcript,
+  rotate them" for fixtures the session never received. The edited region —
+  `oldString`, `newString`, `structuredPatch` — is still read.
+
 ## 0.9.0 — 2026-09-21
 
 ### Fixed

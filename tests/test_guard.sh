@@ -472,5 +472,66 @@ else
 fi
 
 echo
+echo "pass E — a reader of an ordinary file that holds a credential"
+# The fixture is built at run time: a literal token in this file would be a
+# finding for every scanner that ever reads the repository, this guard included.
+PE_DIR="$(mktemp -d)"
+trap 'rm -rf "$PE_DIR"' EXIT
+PE_TOKEN="ghp_$(printf 'Ab1%.0s' 1 2 3 4 5 6 7 8 9 10 11 12)"
+printf 'first line\nGITHUB token here: %s\nlast line\n' "$PE_TOKEN" > "$PE_DIR/notes.txt"
+printf 'nothing to see\nat all\n' > "$PE_DIR/clean.txt"
+printf 'already masked: <REDACTED:40>\n' > "$PE_DIR/masked.txt"
+
+check 2 "cat $PE_DIR/notes.txt"                 'cat of a file holding a token'
+check 2 "head -n 5 $PE_DIR/notes.txt"           'head -n 5 of it'
+check 2 "sed -n '1,3p' $PE_DIR/notes.txt"       'sed -n of it'
+check 2 "cat < $PE_DIR/notes.txt"               'cat < of it'
+check 2 "ls && cat \"$PE_DIR/notes.txt\""       'a quoted path, second sub-command'
+check 0 "cat $PE_DIR/clean.txt"                 'cat of a clean file'
+check 0 "cat $PE_DIR/masked.txt"                'a file that is already masked'
+check 0 "cat $PE_DIR/clean.txt > $PE_DIR/notes.txt" 'the file only written to'
+check 0 "sed -i 's/x/y/' $PE_DIR/notes.txt"     'sed -i edits, prints nothing'
+check 0 "rg token $PE_DIR/notes.txt"            'grep family prints matches only'
+check 0 "cat $PE_DIR/missing.txt"               'a file that does not exist'
+check 0 "wc -l $PE_DIR/notes.txt"               'not a reader'
+# Only the printed lines count: the token is on line 2 of 3.
+check 0 "head -1 $PE_DIR/notes.txt"             'head -1 stops before the token'
+check 0 "tail -n 1 $PE_DIR/notes.txt"           'tail -n 1 starts after it'
+check 0 "sed -n '3,3p' $PE_DIR/notes.txt"       'sed -n of a clean range'
+check 2 "head -n 2 $PE_DIR/notes.txt"           'head -n 2 reaches it'
+check 2 "tail -2 $PE_DIR/notes.txt"             'tail -2 reaches it'
+check 2 "tail -n +2 $PE_DIR/notes.txt"          'tail -n +2 starts on it'
+check 2 "sed -n '2p' $PE_DIR/notes.txt"         'sed -n of the line itself'
+echo
+echo "the Read tool — a path from the credential-store list"
+# check_read <expected-exit> <path> [label]: the payload the Read tool sends.
+check_read() {
+    local want="$1" path="$2" label="${3:-Read $2}" got payload
+    payload="$(jq -nc --arg p "$path" '{tool_name:"Read", tool_input:{file_path:$p}}')"
+    # shellcheck disable=SC2086
+    if [ -n "$SERVER" ] && [ -z "$CHECK_TIMEOUT" ]; then
+        printf '%s\n' "$payload" >&"${PW[1]}"
+        read -r got <&"${PW[0]}"
+    elif [ -n "$RUNNER" ]; then
+        printf '%s' "$payload" | $RUNNER "$GUARD" >/dev/null 2>&1; got=$?
+    else
+        printf '%s' "$payload" | "$GUARD" >/dev/null 2>&1; got=$?
+    fi
+    if [ "$got" = "$want" ]; then
+        pass=$((pass + 1)); printf '  ok    %-52s exit=%s\n' "$label" "$got"
+    else
+        fail=$((fail + 1)); printf '  FAIL  %-52s exit=%s (expected %s)\n' "$label" "$got" "$want"
+    fi
+}
+check_read 2 /srv/app/.env
+check_read 2 /srv/app/.env.production
+check_read 2 /home/user/.aws/credentials
+check_read 2 /home/user/.ssh/id_ed25519
+check_read 2 /etc/ssl/private/server.key
+check_read 0 /srv/app/.env.example
+check_read 0 /srv/app/README.md
+check_read 0 /home/user/.ssh/config
+check_read 0 "$PE_DIR/notes.txt"    'Read of a fixture file stays allowed'
+echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

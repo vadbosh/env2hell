@@ -875,6 +875,33 @@ else
     no "--warn-only stays silent on a bare checksum" "it warned about: $quiet"
 fi
 
+# An Edit result hands the hook the whole file as `originalFile`, and Claude
+# Code keeps none of it: the transcript stores that field empty, beside
+# `contentNotInModelContext`. A credential elsewhere in the file therefore never
+# reached the session, and a warning saying it is "already in the transcript"
+# was untrue — measured on 2026-09-25, when a test fixture file drew 17 of them
+# on an edit that touched none of its keys. What the session does keep is the
+# edited region: oldString, newString, structuredPatch.
+edit_far="$(jq -nc --arg f "line one\ncroc --pass $HEX code\nline three" \
+    '{tool_name:"Edit", tool_response:{filePath:"/x/t.sh", originalFile:$f,
+      oldString:"line one", newString:"line 1",
+      structuredPatch:[{lines:["-line one","+line 1"]}]}}')"
+if [ -z "$(printf '%s' "$edit_far" | run_tool --warn-only)" ]; then
+    ok "--warn-only ignores an Edit's originalFile, which the session never keeps"
+else
+    no "--warn-only ignores an Edit's originalFile" "it warned about a file body the transcript does not hold"
+fi
+
+edit_near="$(jq -nc --arg n "croc --pass $HEX code" \
+    '{tool_name:"Edit", tool_response:{filePath:"/x/t.sh", originalFile:"",
+      oldString:"croc", newString:$n, structuredPatch:[{lines:["+" + $n]}]}}')"
+if printf '%s' "$(printf '%s' "$edit_near" | run_tool --warn-only)" \
+        | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+    ok "--warn-only still reports a credential in the edited text"
+else
+    no "--warn-only still reports a credential in the edited text" "no warning"
+fi
+
 # ── the Opencode plugin must call this CLI, not reimplement it ──────────────
 PLUGIN="$SRC/plugins/opencode/secrets-redact.ts"
 if [ -f "$PLUGIN" ]; then

@@ -635,6 +635,13 @@ else
     no "claude: the old failure matcher is widened by the same run" "$(shape claude)"
 fi
 
+# The guard entry, wired for Bash alone before 0.10.0, now also judges Read.
+if grep -qE '^PreToolUse[[:space:]]Bash\|Read[[:space:]]' <<< "$(shape claude)"; then
+    ok "claude: the old guard matcher is widened to Bash|Read"
+else
+    no "claude: the old guard matcher is widened to Bash|Read" "$(shape claude)"
+fi
+
 # ── the number that decides whether the redactor finishes ───────────────────
 # A killed PostToolUse hook replaces nothing, so the tool result reaches the
 # model as it was. At the masking pass's measured ~90 KB/s, 10 s covered under
@@ -669,7 +676,7 @@ fi
 py_values="$(python3 - "$PATCH" <<'PY'
 import runpy, sys
 mod = runpy.run_path(sys.argv[1])
-for value in (mod["REDACT_MATCHER"]["claude"], mod["NOTICE_MATCHER"],
+for value in (mod["GUARD_MATCHER"]["claude"], mod["REDACT_MATCHER"]["claude"], mod["NOTICE_MATCHER"],
               mod["FAILURE_MATCHER"], mod["REDACT_TIMEOUT"],
               mod["GUARD_TIMEOUT"]):
     print(value)
@@ -697,6 +704,7 @@ while IFS='|' read -r label ps_name; do
            "python=[$want] powershell=[$got]"
     fi
 done <<'PAIRS'
+the guard matcher|GuardMatcher
 the redactor matcher|RedactMatcher
 the notice matcher|NoticeMatcher
 the failure matcher|FailureMatcher

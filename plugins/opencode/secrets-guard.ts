@@ -43,15 +43,23 @@ export const SecretsGuardPlugin: Plugin = async ({ $ }) => {
   return {
     "tool.execute.before": async (input, output) => {
       const tool = String(input?.tool ?? "").toLowerCase()
-      if (tool !== "bash") return
+      if (tool !== "bash" && tool !== "read") return
       const args = output?.args as Record<string, unknown> | undefined
       if (!args || typeof args !== "object") return
 
-      const command = args.command as unknown
-      if (typeof command !== "string" || !command) return
-
-      // The CLI reads the Claude Code hook payload shape on stdin.
-      const payload = JSON.stringify({ tool_input: { command } })
+      // The CLI reads the Claude Code hook payload shape on stdin. A read is
+      // judged by its path alone (a known credential store is denied), so it
+      // is sent in the shape Claude Code's Read tool uses.
+      let payload: string
+      if (tool === "read") {
+        const filePath = args.filePath as unknown
+        if (typeof filePath !== "string" || !filePath) return
+        payload = JSON.stringify({ tool_name: "Read", tool_input: { file_path: filePath } })
+      } else {
+        const command = args.command as unknown
+        if (typeof command !== "string" || !command) return
+        payload = JSON.stringify({ tool_input: { command } })
+      }
       // Single-value interpolation only (same safe pattern as read-guard.ts).
       const res = await $`printf %s ${payload} | ${guard}`.quiet().nothrow()
 

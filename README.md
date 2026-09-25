@@ -250,12 +250,12 @@ purpose of having made them.
 
 | Assistant | Mechanism |
 |---|---|
-| Claude Code | `PreToolUse` hook, matcher `Bash`, in `settings.json` |
+| Claude Code | `PreToolUse` hook, matcher `Bash\|Read`, in `settings.json` — a Read is judged by its path |
 | Claude Code | `PostToolUse` hook, matcher `Bash\|Read\|Grep`, in `settings.json` — the redactor |
 | Windows | the same two hooks, registered with `"shell": "powershell"` and pointing at the `.ps1` ports |
 | Codex | `PreToolUse` hook, matcher `^Bash$`, in `hooks.json` |
 | Codex | `PostToolUse` hook, matcher `^Bash$` — the redactor, warning only |
-| Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin |
+| Opencode | `permission.bash` deny rules **and** a `tool.execute.before` plugin, for `bash` and `read` |
 | Opencode | a `tool.execute.after` plugin — the redactor |
 
 Opencode needs both layers. `permission.bash` matches on a command prefix, so
@@ -263,10 +263,12 @@ on its own it never sees `env | grep X`, `rtk env` or `a && env`. The plugin
 runs the real policy by calling the same `secrets-guard`, so there is one
 source of truth rather than two that drift.
 
-**The two matchers differ on purpose.** The guard inspects a command line
-before it runs, which has no meaning for a tool that is not a shell. The
-redactor inspects a result, and a result carrying a credential need not have
-come from a shell at all: `Read` on a `.env`, an `id_rsa` or a kubeconfig hands
+**The two matchers differ on purpose.** The guard inspects what a call is about
+to do: a command line, and since 0.10.0 the path a `Read` is about to open — a
+known credential store is denied before it is read, the same list `cat` is
+judged by. It does not read the file for a `Read`, so a file of test keys stays
+editable. The redactor inspects a result, and a result carrying a credential
+need not have come from a shell at all: `Read` on a `.env`, an `id_rsa` or a kubeconfig hands
 the file over verbatim, and `Grep` returns the matching lines. Reading a secret
 needs no shell, so for a while the most direct route to one was the only route
 left uncovered.

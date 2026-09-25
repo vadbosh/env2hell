@@ -178,6 +178,61 @@ jq -r '.permission.bash.env' opencode.json | head
 unbounded pattern denied a perfectly safe command. The pattern now requires the
 `.env` to be preceded by a space, a quote, a slash or an `=`.
 
+## Pass E — what a reader would print
+
+Passes A to D judge the command line. None of them can see a credential that
+sits in an ordinary file: a test fixture, a config somebody pasted a token
+into, a log. `cat` of that file puts the value in the transcript, and the only
+thing left is the redactor afterwards — which in Codex can warn but not
+replace. The one place to stop it everywhere is before the command runs.
+
+So for a sub-command whose command prints files — the pass B readers (`cat`,
+`head`, `tail`, `less`, `bat`, `nl`, `od` …) and `sed` without `-i` — every
+argument that names an existing regular file is run through the redactor's own
+`--filter`, and the output is compared with the file line by line:
+
+```
+$ cat tests/fixtures.txt
+[secrets-guard] Blocked: tests/fixtures.txt holds 1 credential-shaped value(s)
+on line(s) 2, and printing it puts them in the transcript. Read it masked
+instead: secrets-redact --filter < tests/fixtures.txt
+```
+
+- **Only a change counts.** A file that already carries a literal
+  `<REDACTED:…>` marker is not a hit.
+- **Only the printed lines count.** `head -5`, `tail -n 20`, `tail -n +40` and
+  `sed -n '10,20p'` are judged by the lines they print. The first run of this
+  pass denied `head -5 CHANGELOG.md` in this very repository: the changelog
+  documents key shapes further down, and the first five lines hold none.
+- **The message names lines, never values.** A second copy in the denial would
+  be the leak it exists to prevent.
+- **The grep family is left alone.** `rg foo notes.md` prints matching lines,
+  not the file; denying it because line 900 holds a token would block ordinary
+  work for a leak that was not going to happen.
+- **Redirect targets are skipped** — `cat a > b` writes `b` — and `< in` is
+  read, so it is checked.
+
+The pass is skipped, never fatal, when it cannot run: no redactor beside the
+guard or on `PATH`, a file over `SECRETS_GUARD_SCAN_MAX` bytes (1 MiB by
+default), a path that is not literal (`$VAR`, a glob). A hook runs before every
+command, and a megabyte is the size it can afford: measured on the machine this
+was written on, 0.7 s for 950 KB, against the 30 s hook timeout.
+
+## The Read tool — the path, not the content
+
+Since 0.10.0 the Claude Code hook is wired for `Bash|Read`, and the Opencode
+plugin for `bash` and `read`. A Read is judged by its path alone, against the
+same credential-store list pass B applies to `cat`: `.env` and its variants,
+private keys, `~/.aws/credentials`, `~/.kube/config` and the rest. A template
+such as `.env.example` is renamed out first, as for `cat`.
+
+The content is deliberately not read here. An edit requires a read first, so
+denying a read of a file that merely *contains* a test key would make that file
+uneditable. What a Read returns is masked afterwards by the redactor; the path
+check exists because a masked `.env` is still a list of every variable name and
+every value too short to look like a key. Codex has no Read tool, so its
+matcher stays `^Bash$`.
+
 ## Failing open
 
 If the payload is not JSON, or `jq` is missing, or the command field is empty,
@@ -234,6 +289,16 @@ That is not redaction and the mode name says so. What it buys is that the leak
 stops being silent: the model is told the value is compromised, which is what
 starts a rotation. Finding out now beats finding out never, and Codex keeps the
 guard either way.
+
+Claude Code wires the same mode for `Edit`, `Write` and MCP tools, whose
+results cannot be masked field by field either. One field is left out: an Edit
+result hands the hook the whole file as `originalFile`, and Claude Code keeps
+none of it — the transcript stores that field empty, beside
+`contentNotInModelContext`. Until 0.10.0 it was counted, so editing a file that
+held test keys anywhere drew "N values, already in the transcript, rotate
+them" for values that never reached the session. The edited region, which the
+session does keep, is still read through `oldString`, `newString` and
+`structuredPatch`.
 
 Two tiers decide what to mask — and in `safe-env` there are three: a third one
 decides by the **name** of the variable, documented in
@@ -332,7 +397,9 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
 ## What this does not do
 
 - The guard does not read command **output**; `secrets-redact` does, but only
-  after the command has run, and only for values a label identifies. An
+  after the command has run, and only for values a label identifies. Pass E
+  reads the *file* a reader is about to print, which covers `cat` and `head`
+  but not a program that prints a file itself, nor `rg`, nor an interpreter. An
   unlabelled secret that reads as ordinary text — a three-word passphrase, say
   — passes through both.
 - It is not a sandbox. Someone determined to read a value can encode it,

@@ -391,6 +391,15 @@ if ($mode -eq '--warn-only') {
         return $out
     }
 
+    # Except `originalFile`: Claude Code hands the hook the whole file there and
+    # keeps none of it — the transcript stores the field empty, beside
+    # `contentNotInModelContext`. Counting it warned about credentials that
+    # never reached the session. The edited region is still read through
+    # oldString, newString and structuredPatch.
+    if ($resp -is [psobject] -and $resp.PSObject.Properties['originalFile']) {
+        $resp = $resp | Select-Object -Property * -ExcludeProperty originalFile
+    }
+
     $parts = @()
     if ($errText -is [string]) { $parts += $errText }
     if ($null -ne $resp)       { $parts += Get-Strings $resp }

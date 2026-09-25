@@ -48,7 +48,25 @@ if ($payload.PSObject.Properties.Name -contains 'tool_input') {
         $command = [string]$payload.tool_input.command
     }
 }
-if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+# The Read tool names a file instead of running a command. Only the path is
+# judged, against the list of credential stores `cat` is judged by below; the
+# content is not — a file of test fixtures has to stay readable, or it cannot be
+# edited, since an edit requires a read first.
+$readPath = $null
+if (($payload.PSObject.Properties.Name -contains 'tool_name') -and
+    ([string]$payload.tool_name -ieq 'read') -and
+    ($payload.PSObject.Properties.Name -contains 'tool_input')) {
+    foreach ($k in @('file_path', 'filePath')) {
+        if ($payload.tool_input.PSObject.Properties.Name -contains $k) {
+            $readPath = [string]$payload.tool_input.$k; break
+        }
+    }
+}
+# A relative path in pass E means the session's directory, which the payload names.
+$sessionDir = $null
+if ($payload.PSObject.Properties.Name -contains 'cwd') { $sessionDir = [string]$payload.cwd }
+if ([string]::IsNullOrWhiteSpace($command) -and [string]::IsNullOrWhiteSpace($readPath)) { exit 0 }
+if ($null -eq $command) { $command = '' }
 
 # A heredoc body is data being written to a file, not a list of commands. Both
 # passes below used to read it as commands, so writing a file whose text
@@ -69,7 +87,7 @@ foreach ($line in ($command -split '\r?\n')) {
     $kept += $line
 }
 $command = $kept -join "`n"
-if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+if ([string]::IsNullOrWhiteSpace($command) -and [string]::IsNullOrWhiteSpace($readPath)) { exit 0 }
 
 # ---------- too large to check ----------
 # Failing open is the right answer to an unexpected payload — that contract
@@ -311,6 +329,17 @@ $rawSubs += $buf
 # replacement contains no `env`, because -match is case-insensitive.
 $envTemplates = '\.env\.(example|sample|template|dist|defaults)'
 
+# ── the Read tool: a path from the same list ───────────────────────────────
+# Claude Code masks what Read returns afterwards, but a masked .env is still a
+# list of every variable name and every value too short to look like a key.
+if (-not [string]::IsNullOrWhiteSpace($readPath)) {
+    $probe = ' ' + ($readPath -replace $envTemplates, '.TPLFILE')
+    if ($probe -match $secrets) {
+        Deny "[secrets-guard] Blocked: $readPath is a credential store, and reading it puts its values in the transcript. Check the one name you need with safe-env, or read a template such as .env.example."
+    }
+    if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+}
+
 # ---------- pass D: a dump reached through something that runs commands -----
 # `bash -c env`, `eval env` and `python3 -c "print(os.environ)"` are not
 # evasions; they are shapes an assistant writes by habit, and pass A cannot see
@@ -422,4 +451,135 @@ foreach ($rawSub in $rawSubs) {
     }
 }
 
+
+# ── pass E: what a reader would print, looked at before it prints it ────────
+# Same pass as in bin/secrets-guard, and docs/design.*.md explains it: for a
+# sub-command whose command prints files, every argument that names an existing
+# regular file is run through the redactor's own --filter, and a line it changes
+# — within the lines the command prints — denies the call. No redactor, a file
+# over the size limit, or anything unreadable: the pass is skipped, never fatal.
+$scanMax = 1048576
+if ($env:SECRETS_GUARD_SCAN_MAX -match '^\d+$') { $scanMax = [int64]$env:SECRETS_GUARD_SCAN_MAX }
+$redactor = $env:SECRETS_REDACT_BIN
+if (-not $redactor) { $redactor = Join-Path $PSScriptRoot 'secrets-redact.ps1' }
+
+function Get-ReaderTargets([string]$text) {
+    $out = @()
+    foreach ($line in ($text -split "`n")) {
+        # Quote-aware tokens, with sub-command boundaries at ; & | ( ).
+        $groups = @(); $tok = @(); $cur = ''; $q = ''; $have = $false
+        foreach ($c in $line.ToCharArray()) {
+            if ($q) { if ($c -eq $q) { $q = '' } else { $cur += $c }; continue }
+            if ($c -eq '"' -or $c -eq "'") { $q = $c; $have = $true; continue }
+            if (';&|()'.Contains($c)) {
+                if ($have) { $tok += $cur; $cur = ''; $have = $false }
+                if ($tok.Count) { $groups += ,$tok }; $tok = @(); continue
+            }
+            if ($c -eq ' ' -or $c -eq "`t") {
+                if ($have) { $tok += $cur; $cur = ''; $have = $false }
+                continue
+            }
+            $cur += $c; $have = $true
+        }
+        if ($have) { $tok += $cur }
+        if ($tok.Count) { $groups += ,$tok }
+
+        foreach ($g in $groups) {
+            $j = 0
+            while ($j -lt $g.Count -and ($g[$j] -in @('sudo', 'command', 'rtk') -or $g[$j] -match '^[A-Za-z_][A-Za-z0-9_]*=')) { $j++ }
+            if ($j -ge $g.Count) { continue }
+            $name = ($g[$j] -split '[/\\]')[-1]
+            if ($name -notmatch '^(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|strings|sed)$') { continue }
+            $rest = @($g | Select-Object -Skip ($j + 1))
+            if ($name -eq 'sed' -and ($rest | Where-Object { $_ -match '^(-i|--in-place)' })) { continue }
+
+            # Which lines it prints. A = all, H = first N, T = last N,
+            # F = from line N, S = lines a..b.
+            $spec = 'A'
+            if ($name -eq 'head' -or $name -eq 'tail') {
+                $n = '10'
+                for ($k = 0; $k -lt $rest.Count; $k++) {
+                    if ($rest[$k] -eq '-n' -and $k + 1 -lt $rest.Count) { $n = $rest[$k + 1] }
+                    elseif ($rest[$k] -match '^-n(\+?\d+)$') { $n = $Matches[1] }
+                    elseif ($rest[$k] -match '^--lines=(.+)$') { $n = $Matches[1] }
+                    elseif ($rest[$k] -match '^-(\d+)$') { $n = $Matches[1] }
+                }
+                if ($name -eq 'tail' -and $n -match '^\+(\d+)$') { $spec = "F:$($Matches[1])" }
+                elseif ($n -match '^\d+$') { $spec = $(if ($name -eq 'head') { "H:$n" } else { "T:$n" }) }
+            }
+            if ($name -eq 'sed') {
+                $quiet = $false; $script = ''
+                foreach ($t in $rest) {
+                    if ($t -in @('-n', '--quiet', '--silent')) { $quiet = $true }
+                    elseif ($t -notmatch '^-' -and -not $script) { $script = $t }
+                }
+                if ($quiet -and $script -match '^(\d+)(,(\d+))?p$') {
+                    $spec = 'S:' + $Matches[1] + ',' + $(if ($Matches[3]) { $Matches[3] } else { $Matches[1] })
+                }
+            }
+
+            $skip = $false
+            foreach ($w in $rest) {
+                if ($skip) { $skip = $false; continue }
+                if (($name -eq 'head' -or $name -eq 'tail') -and ($w -eq '-n' -or $w -eq '--lines')) { $skip = $true; continue }
+                if ($w -match '^\d*>>?$' -or $w -eq '&>') { $skip = $true; continue }
+                if ($w -match '^\d*>>?.' -or $w -match '^&>.') { continue }
+                if ($w -eq '<') { continue }
+                if ($w -match '^<[^<]') { $w = $w.Substring(1) }
+                if ($w -match '^-') { continue }
+                $out += [pscustomobject]@{ Spec = $spec; Path = $w }
+            }
+        }
+    }
+    return $out
+}
+
+if ($command -and (Test-Path -LiteralPath $redactor -PathType Leaf)) {
+    if ($sessionDir -and (Test-Path -LiteralPath $sessionDir -PathType Container)) {
+        Set-Location -LiteralPath $sessionDir
+    }
+    foreach ($t in (Get-ReaderTargets $command)) {
+        $f = $t.Path
+        if ($f -like '~/*') { $f = Join-Path $HOME $f.Substring(2) }
+        elseif ($f -like '$HOME/*') { $f = Join-Path $HOME $f.Substring(6) }
+        elseif ($f -like '${HOME}/*') { $f = Join-Path $HOME $f.Substring(8) }
+        elseif ($f -match '[$*?\[]') { continue }
+        try {
+            if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { continue }
+            $item = Get-Item -LiteralPath $f
+            if ($item.Length -gt $scanMax) { continue }
+            $orig = [System.IO.File]::ReadAllText($item.FullName)
+            $pwshExe = (Get-Process -Id $PID).Path
+            $masked = $orig | & $pwshExe -NoProfile -File $redactor --filter 2>$null
+            $masked = ($masked -join "`n")
+        } catch { continue }
+
+        $a = $orig -split "`r?`n"; $b = $masked -split "`r?`n"
+        $first = 1; $last = 0
+        switch -regex ($t.Spec) {
+            '^H:(\d+)$' { $last = [int]$Matches[1] }
+            '^F:(\d+)$' { $first = [int]$Matches[1] }
+            '^T:(\d+)$' {
+                $total = $a.Count; if ($orig.EndsWith("`n")) { $total-- }
+                $first = [Math]::Max(1, $total - [int]$Matches[1] + 1)
+            }
+            '^S:(\d+),(\d+)$' { $first = [int]$Matches[1]; $last = [int]$Matches[2] }
+        }
+        $hits = 0; $lines = @()
+        for ($i = 0; $i -lt $b.Count; $i++) {
+            $ln = $i + 1
+            if ($ln -lt $first -or ($last -gt 0 -and $ln -gt $last)) { continue }
+            $was = if ($i -lt $a.Count) { $a[$i] } else { $null }
+            if ($b[$i] -ne $was) {
+                $hits += ([regex]::Matches($b[$i], '<REDACTED:')).Count
+                $lines += $ln
+            }
+        }
+        if ($hits -gt 0) {
+            $shown = ($lines | Select-Object -First 5) -join ','
+            if ($lines.Count -gt 5) { $shown += ',…' }
+            Deny "[secrets-guard] Blocked: $($t.Path) holds $hits credential-shaped value(s) on line(s) $shown, and printing it puts them in the transcript. Read it masked instead: secrets-redact --filter < $($t.Path)"
+        }
+    }
+}
 exit 0

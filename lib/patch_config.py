@@ -119,14 +119,18 @@ CONFIG = {
     "opencode": _opencode_config(),
 }
 
-# The guard inspects a command line before it runs, so it only has meaning for
-# the shell tool. The redactor inspects a result after the fact, and a result
+# The guard inspects a command line before it runs, and since 0.10.0 the path a
+# Read is about to open: a known credential store (.env, id_rsa, ~/.aws/
+# credentials — the list `cat` is judged by) is denied before it is read, which
+# masking afterwards cannot match, since a masked .env still lists every name
+# and every short value. Codex has no Read tool, so its matcher stays the shell.
+# The redactor inspects a result after the fact, and a result
 # carrying a credential does not have to have come from a shell: `Read` on a
 # .env, an id_rsa or a kubeconfig hands the file over verbatim, and `Grep`
 # returns matching lines. Measured 2026-09-14: a Read of a file holding a
 # GitLab token put the token in the transcript untouched, because the hook was
 # wired for Bash alone.
-GUARD_MATCHER = {"claude": "Bash", "codex": "^Bash$"}
+GUARD_MATCHER = {"claude": "Bash|Read", "codex": "^Bash$"}
 REDACT_MATCHER = {"claude": "Bash|Read|Grep", "codex": "^Bash$"}
 
 # Assistants whose hook contract can replace a tool result once it exists, and
@@ -427,6 +431,11 @@ def patch_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
         # carries the timeout this version writes.
         for entry in present:
             changed += refresh_timeout(entry, "secrets-guard", GUARD_TIMEOUT)
+            # An install from before 0.10.0 is wired for Bash alone, and only a
+            # re-run of the installer will ever look at it again.
+            if entry.get("matcher") != GUARD_MATCHER[ide]:
+                entry["matcher"] = GUARD_MATCHER[ide]
+                changed.append(f"hook matcher set to {GUARD_MATCHER[ide]}")
             for h in entry.get("hooks", []):
                 if is_ours(h.get("command", ""), "secrets-guard") and h["command"] != guard:
                     h["command"] = guard
