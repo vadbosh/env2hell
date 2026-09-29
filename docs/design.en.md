@@ -407,13 +407,17 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
   which is what actually happens.
 - It does not rotate anything. Once a key reaches a transcript, the only fix is
   a new key.
-- **The lists for a command run by another command are partial on purpose.**
-  `bash -c env`, `eval env`, `rtk run env` (and `rtk proxy`), `$(env)` and the
-  environment-dumping idiom of Python, Node, Perl and Ruby are denied, because
-  those are what an assistant writes by habit. The test is that the payload IS the dump command, so
-  `bash -c "echo env"` and `sh -c "set -e; make"` keep working — and so does
-  anything that reaches the same place by another route. Parsing an arbitrary
-  program to find out what it does is the sandbox this is not.
+- **A shell program in quotes is checked; other programs are not.** The quoted
+  argument of `bash -c`, `sh -c`, `zsh -c`, `eval`, `rtk run` and `rtk proxy`
+  is shell, so pass 0 hands it back to the guard as a command of its own:
+  `bash -c 'cat ~/.bashrc'` is denied like `cat ~/.bashrc`, and
+  `bash -c "echo env"` or `sh -c "set -e; make"` pass because they would pass
+  on their own. Only a wrapper that starts a sub-command counts, and nesting
+  stops at three levels. `$(env)` and the environment-dumping idiom of Python,
+  Node, Perl and Ruby are denied by pattern; anything else that reaches the
+  same place by another route — `xargs sh -c`, `find -exec`, `ssh host '…'` —
+  is not followed. Parsing an arbitrary program to find out what it does is the
+  sandbox this is not.
 - **An interpreter will read anything.** `python3 -c 'print(open(".env").read())'`,
   `perl -pe '' .env` and any three-line program print a store and pass. The
   payload there is arbitrary code, and parsing it would mean building the

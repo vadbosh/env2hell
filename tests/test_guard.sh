@@ -387,6 +387,22 @@ check 2 "rtk run 'printenv'"
 check 2 'rtk proxy "env"'
 check 0 'rtk run git status'
 check 0 'rtk run echo env'
+
+echo
+echo "pass 0 — a shell program in quotes is checked as a command of its own"
+check 2 "bash -c 'cat ~/.bashrc'"
+check 2 'sh -c "cat .env"'
+check 2 "rtk run 'cat ~/.bashrc'"
+check 2 "rtk proxy 'head -5 .env'"
+check 2 "eval 'cat ~/.ssh/id_rsa'"
+check 2 "bash -lc 'env'"
+check 2 "cd /tmp && bash -c 'cat .env'"
+check 2 "sudo bash -c 'cat /proc/1/environ'"
+check 2 "bash -c \"bash -c 'cat .env'\""
+check 0 "bash -c 'ls -la'"
+check 0 "rtk run 'rg -n foo .'"
+check 0 "git commit -m \"note: bash -c 'cat .env' is denied\""
+check 0 "echo \"bash -c 'cat .env'\""
 check 0 "rtk run 'echo env'"
 check 0 'rtk run safe-env'
 

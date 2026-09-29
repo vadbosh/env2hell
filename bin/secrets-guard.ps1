@@ -104,6 +104,61 @@ if ($subCount -gt $GuardMaxSubs) {
     Deny "[secrets-guard] Blocked: $subCount sub-commands is more than this guard can check ($GuardMaxSubs), so the command was never checked. Split it, or write the file with an editor instead of a heredoc."
 }
 
+# ---------- pass 0: a shell program handed to another command ----------
+# `bash -c '…'`, `sh -c "…"`, `eval '…'` and `rtk run '…'` / `rtk proxy '…'`
+# run their quoted argument as shell — the language the commands reaching this
+# hook are written in, here as on POSIX. Every pass below works on
+# quote-stripped text or one sub-command at a time, so a reader inside that
+# argument was invisible: `bash -c 'cat ~/.bashrc'` passed.
+#
+# The argument is handed back to this same script as a command of its own, the
+# way tests/pwsh_serve.ps1 calls it: Console.In swapped for a reader, then `&`.
+# No second process, so no second second of pwsh startup. Only a wrapper that
+# starts a sub-command counts — `git commit -m "… bash -c 'cat .env' …"` is a
+# message — and depth is capped, because nesting has no end.
+function Get-ShellPayload([string]$s) {
+    $s = $s.TrimStart()
+    while ($s -cmatch '^(sudo|command|time|nice|nohup|exec)\s+') { $s = $s.Substring($Matches[0].Length) }
+    while ($s -cmatch '^[A-Za-z_][A-Za-z0-9_]*=\S*\s+') { $s = $s.Substring($Matches[0].Length) }
+    if ($s -cmatch '^(?:(?:bash|sh|zsh|dash|ksh)(?:\s+-[A-Za-z]+)*\s+-[A-Za-z]*c|rtk\s+(?:run|proxy)|eval)\s+(?:''([^'']*)''|"([^"]*)")') {
+        if ($Matches.ContainsKey(1)) { return $Matches[1] }
+        if ($Matches.ContainsKey(2)) { return $Matches[2] }
+    }
+    return $null
+}
+
+$guardDepth = 0
+[void][int]::TryParse([string]$env:SECRETS_GUARD_DEPTH, [ref]$guardDepth)
+if ($guardDepth -lt 3 -and -not [string]::IsNullOrWhiteSpace($command)) {
+    $inners = [System.Collections.Generic.List[string]]::new()
+    $buf = [System.Text.StringBuilder]::new()
+    $q = ''
+    foreach ($ch in ($command + "`n").ToCharArray()) {
+        $c = [string]$ch
+        if ($q -eq '') {
+            if ($c -eq '"' -or $c -eq "'") { $q = $c }
+            elseif ($c -in @(';', '&', '|', "`n", "`r")) {
+                $p = Get-ShellPayload $buf.ToString()
+                if (-not [string]::IsNullOrEmpty($p)) { $inners.Add($p) }
+                [void]$buf.Clear()
+                continue
+            }
+        } elseif ($c -eq $q) { $q = '' }
+        [void]$buf.Append($c)
+    }
+    foreach ($inner in $inners) {
+        $json = @{ tool_name = 'Bash'; tool_input = @{ command = $inner } } | ConvertTo-Json -Compress
+        $savedDepth = $env:SECRETS_GUARD_DEPTH
+        $env:SECRETS_GUARD_DEPTH = [string]($guardDepth + 1)
+        [Console]::SetIn([System.IO.StringReader]::new($json))
+        $global:LASTEXITCODE = 0
+        & $PSCommandPath
+        $innerCode = $LASTEXITCODE
+        $env:SECRETS_GUARD_DEPTH = $savedDepth
+        if ($innerCode -eq 2) { exit 2 }   # the inner run already wrote its message
+    }
+}
+
 # ---------- pass A: dump commands, on quote-stripped text ----------
 $scan = $command -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
 

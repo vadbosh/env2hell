@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- **Pass 0: a shell program in quotes is checked as a command of its own.** The
+  quoted argument of `bash -c`, `sh -c`, `zsh -c`, `eval`, `rtk run` and
+  `rtk proxy` is shell, and every other pass works on quote-stripped text or
+  one sub-command at a time — so `bash -c 'cat ~/.bashrc'` passed while
+  `cat ~/.bashrc` was denied. The argument is now handed back to the guard,
+  which gives it every pass and denies nothing it would allow on its own:
+  `bash -c "echo env"` and `sh -c "set -e; make"` still work. Only a wrapper
+  that starts a sub-command counts, so a commit message quoting one is not a
+  read; nesting stops at three levels. The PowerShell port recurses in-process,
+  the way tests/pwsh_serve.ps1 calls it, so there is no second pwsh startup.
+
 ### Fixed
 
 - **`rtk run` and `rtk proxy` no longer carry a dump past the guard.** Pass A
@@ -9,9 +22,7 @@
   `rtk run printenv` and `rtk proxy printenv` went through; pass D did not know
   the quoted form, so `rtk run 'env'` did too. Both are one wrapper of two words
   now, in the POSIX guard and in the PowerShell port — rtk is the same CLI in
-  both. A file read inside the quotes (`rtk run 'cat .env'`) stays where
-  `bash -c 'cat .env'` is: the documented limit on commands run by another
-  command.
+  both.
 
 ## 0.10.0 — 2026-09-25
 
