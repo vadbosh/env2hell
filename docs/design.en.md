@@ -408,9 +408,9 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
 - It does not rotate anything. Once a key reaches a transcript, the only fix is
   a new key.
 - **The lists for a command run by another command are partial on purpose.**
-  `bash -c env`, `eval env`, `$(env)` and the environment-dumping idiom of
-  Python, Node, Perl and Ruby are denied, because those are what an assistant
-  writes by habit. The test is that the payload IS the dump command, so
+  `bash -c env`, `eval env`, `rtk run env` (and `rtk proxy`), `$(env)` and the
+  environment-dumping idiom of Python, Node, Perl and Ruby are denied, because
+  those are what an assistant writes by habit. The test is that the payload IS the dump command, so
   `bash -c "echo env"` and `sh -c "set -e; make"` keep working — and so does
   anything that reaches the same place by another route. Parsing an arbitrary
   program to find out what it does is the sandbox this is not.

@@ -137,7 +137,14 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
     }
 
     while ($tokens.Count -gt 0 -and $wrappers -contains $tokens[0].ToLower()) {
+        $was = $tokens[0].ToLower()
         $tokens = Drop-First $tokens
+        # `rtk run` and `rtk proxy` run the rest of the line unfiltered, so they
+        # are one wrapper of two words. Stepping over `rtk` alone left `run` as
+        # the command, and `rtk run printenv` dumped the environment.
+        if ($was -eq 'rtk' -and $tokens.Count -gt 0 -and $tokens[0].ToLower() -in @('run', 'proxy')) {
+            $tokens = Drop-First $tokens
+        }
     }
     # A leading assignment sets a variable for the command that follows; it is
     # not the command. Skipping only the token would have been right, and
@@ -351,7 +358,9 @@ if (-not [string]::IsNullOrWhiteSpace($readPath)) {
 # and parsing it is not on the table. Both lists are partial by construction —
 # docs/design.md says so under "what this does not do".
 $dumpWord = '(env|printenv|set|declare|typeset|history)'
-$payload  = '(-c|-e|eval)\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
+# `rtk run` / `rtk proxy` take the command as one quoted argument, the same
+# shape as `bash -c`.
+$payload  = '(-c|-e|eval|rtk\s+(run|proxy))\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
 $idiom    = '(os\.environ|process\.env|%ENV|ENV\.to_h|ENV\.to_hash|ENV\.each)'
 # A command substitution runs its body as a command, and pass A never sees it.
 $subst    = '\$\(\s*' + $dumpWord + '\s*(\)|\|)'

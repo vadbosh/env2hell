@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`rtk run` and `rtk proxy` no longer carry a dump past the guard.** Pass A
+  stepped over `rtk` as a wrapper and then took `run` for the command, so
+  `rtk run printenv` and `rtk proxy printenv` went through; pass D did not know
+  the quoted form, so `rtk run 'env'` did too. Both are one wrapper of two words
+  now, in the POSIX guard and in the PowerShell port — rtk is the same CLI in
+  both. A file read inside the quotes (`rtk run 'cat .env'`) stays where
+  `bash -c 'cat .env'` is: the documented limit on commands run by another
+  command.
+
 ## 0.10.0 — 2026-09-25
 
 ### Added

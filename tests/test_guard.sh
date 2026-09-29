@@ -377,6 +377,18 @@ check 2 'ruby -e "puts ENV.to_h"'
 check 0 'bash -c "echo env"'
 check 0 'sh -c "set -e; make"'
 check 0 'python3 -c "print(1+1)"'
+# `rtk run` / `rtk proxy` run the rest of the line with no filter: one wrapper
+# of two words, and a quoted payload the same shape as `bash -c`.
+check 2 'rtk run env'
+check 2 'rtk run printenv'
+check 2 'rtk proxy printenv'
+check 2 'rtk run env | head'
+check 2 "rtk run 'printenv'"
+check 2 'rtk proxy "env"'
+check 0 'rtk run git status'
+check 0 'rtk run echo env'
+check 0 "rtk run 'echo env'"
+check 0 'rtk run safe-env'
 
 echo
 echo "denied — a here-string prints its text as surely as echo does"
