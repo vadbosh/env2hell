@@ -279,19 +279,27 @@ function Test-StoreRead([string]$rawSub) {
 }
 
 function Remove-FirstQuotedArgument([string]$text) {
+    # Counted from the start of the command's own pipeline stage, and only for
+    # commands whose first operand is a pattern or a program — the same rule as
+    # drop_first_quoted in the POSIX guard, which says why.
     $out = New-Object System.Text.StringBuilder
     $inq = ''
     $dropped = $false
+    $start = 0
     for ($i = 0; $i -lt $text.Length; $i++) {
         $c = $text[$i]
         if ($inq -eq '') {
+            if ($c -eq '|' -or $c -eq ';' -or $c -eq '&' -or $c -eq '(') { $start = $i + 1; $dropped = $false }
             if (($c -eq '"' -or $c -eq "'") -and -not $dropped) {
-                $pre = $text.Substring(0, $i)
+                $pre = $text.Substring($start, $i - $start)
                 # @() so a single token still has .Count — PowerShell unrolls
                 # a one-element pipeline result into a bare string otherwise.
                 $tokens = @($pre -split '\s+' | Where-Object { $_ -ne '' })
-                $onlyFlags = $true
-                for ($j = 1; $j -lt $tokens.Count; $j++) {
+                $k = 0
+                if ($tokens.Count -gt 0 -and $tokens[0] -eq 'rtk') { $k = 1 }
+                $cmd = if ($k -lt $tokens.Count) { ($tokens[$k] -split '[/\\]')[-1] } else { '' }
+                $onlyFlags = $cmd -cmatch '^(grep|egrep|fgrep|rg|ag|ack|sed|awk|gawk|mawk|jq|yq)$'
+                for ($j = $k + 1; $onlyFlags -and $j -lt $tokens.Count; $j++) {
                     if (-not $tokens[$j].StartsWith('-')) { $onlyFlags = $false }
                     # `grep -f FILE` reads patterns FROM a file: the span after
                     # it is a path, not a pattern.

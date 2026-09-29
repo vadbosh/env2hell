@@ -17,6 +17,18 @@
 
 ### Fixed
 
+- **A jq program behind a pipe is no longer read as a path.** The first quoted
+  argument of a grep-like command is its pattern and is dropped before the
+  path check — but "right after the command name and flags" was counted from
+  the start of the whole line. In `curl -s URL | jq -r '.key // empty'` the curl
+  arguments came first, the program was kept, and `.key` matched the key-file
+  pattern, so every REST call parsed with jq was denied. The count now starts
+  at the command's own pipeline stage (`|`, `;`, `&`, `(`), in both ports.
+- **`sort`, `uniq`, `cut`, `rev` and `column` no longer have a quoted key path
+  dropped.** The same rule applied to every extractor, but only grep, rg, ag,
+  ack, sed, awk, jq and yq take a pattern or a program first; for the others
+  the first operand is a file, so `sort 'server.key'` and `uniq "$HOME/tls.key"`
+  passed. They are denied now.
 - **`rtk run` and `rtk proxy` no longer carry a dump past the guard.** Pass A
   stepped over `rtk` as a wrapper and then took `run` for the command, so
   `rtk run printenv` and `rtk proxy printenv` went through; pass D did not know

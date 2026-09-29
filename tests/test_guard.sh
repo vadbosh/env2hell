@@ -215,6 +215,20 @@ check 0 'sed -i.bak "s/a/b/" ~/.bashrc'
 check 0 'grep -rn "cat .env" docs/'
 check 0 "sed -n '/cat .env/p' notes.txt"
 check 0 'rg "\.env" docs/'
+# ...counted from the start of its own pipeline stage: a jq program behind a
+# curl was read as a path, and its `.key` as a key file.
+check 0 "jq -r '.key // empty' resp.json"
+check 0 "curl -s x | jq -r '.key // empty'"
+check 0 "KEY=\$(curl -s -H 'Content-Type: application/json' x | tee /tmp/r.json | jq -r '.key // empty')"
+check 0 "curl -s x | jq '.values[] | .key as \$k | \$k'"
+check 0 "rg -n '\\.key|\\.pem' tests/test_guard.sh"
+# ...and only for commands that take a pattern or a program. The first operand
+# of sort/uniq is a file, and a quoted key path there used to be dropped.
+check 2 "sort 'server.key'"
+check 2 "curl -s x | sort 'server.key'"
+check 2 'uniq "$HOME/tls.key"'
+check 2 "curl -s x | jq -r '.a' 'server.key'"
+check 2 "cat 'server.key' | grep x"
 # `prod.env.example` is a template, like `.env.example`.
 check 0 'cat prod.env.example'
 check 0 'head -20 install.sh'
