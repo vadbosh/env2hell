@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A bare label followed only by a space is no longer read as an
+  assignment.** `ok  pass  NAME=off` and `expect pass "case name"` — the status
+  word of a test report — masked every case name of a pass/fail suite, and the
+  hook told the model to rotate values that were variable names. A space now
+  separates a value only after a flag (`--pass X`, `-token X`) or in SQL
+  (`IDENTIFIED BY`); a bare word needs `=` or `:`. The label alone is skipped,
+  so a labelled value later on the same line is still masked. Both ports; five
+  cases in tests/test_redact.sh.
+
 ## 0.11.0 — 2026-09-30
 
 ### Added

@@ -516,6 +516,16 @@ check_shape mask 'HW_SECRET_KEY=aB3xY7zQ1mN8pR4sT6uV0wX2yZ5cD9eF1gH3jK5l' 'a Hua
 check_shape mask 'password=Xk8mP2qR9vT4wY7z'                     'a mixed-case password'
 check_shape mask 'api_key=0123456789abcdef0123'                  'a bare hex api key'
 
+# A bare label followed only by a space is prose or a test report, not an
+# assignment: `ok  pass  NAME=off` and `expect pass "case name"` masked every
+# case name of a pass/fail suite (2026-10-01). The flag and SQL spellings keep
+# the space, and a labelled value later on the same line is still found.
+check_shape keep '  ok    pass   FOUND_DEFECTS_GUARD=off'      'a test status word before a name'
+check_shape keep 'expect pass  "plain report"'                 'a test status word before a quoted case name'
+check_shape keep 'the secret "never stored in git" rule'       'a bare label before quoted prose'
+check_shape mask "relay -token $HEX"                           'a single-dash flag still takes a space'
+check_shape mask "pass   password=$HEX"                        'a labelled value after a skipped bare label'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then

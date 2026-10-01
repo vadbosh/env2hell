@@ -71,14 +71,14 @@ $patterns = @(
 $patternsRe = [regex]::new(($patterns -join '|'), 'None')
 
 # ── tier 2: what a secret is called, and what one looks like ────────────────
-$Label = '(--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
+$Label = '(?<dash>--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
          'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|' +
          'client[-_]?secret|private[-_]?key|credential|authorization|' +
          # SQL says it in two words: CREATE USER … IDENTIFIED BY '…', the same
          # spelling in Oracle, MySQL and MariaDB. `bin/safe-env` has carried
          # this rule since the first commit and the redactor did not — the
          # shape of drift two implementations of one policy produce in silence.
-         'identified[ \t]+by|' +
+         '(?<sql>identified[ \t]+by)|' +
          # Cloud keys with no distinctive prefix. AWS is covered by tier 1
          # (AKIA…), Huawei and OpenStack are not: their access key is 20
          # characters of uppercase and digits, the secret 40 of base62 — shapes
@@ -120,7 +120,14 @@ $Scheme = '(?:(?:bearer|basic|token)[^\S\n]+)?'
 # `password=X`, `TOKEN: X`, `{"password": X}` and `--pass X`. The POSIX version
 # folds them for a different reason — there two dynamic regexes miss gawk's
 # compile cache — and here it simply halves the work.
-$Separator = '"?(?:[^\S\n]*[=:][^\S\n]*|[^\S\n]+)'
+# A bare word and a space is how prose and test reports use these words:
+# `ok  pass  NAME=off`, `expect pass "case name"`, "the password field".
+# Measured 2026-10-01: a test suite printing pass/fail per case came back with
+# every case name masked. A space alone separates a value only after a flag
+# (`--pass X`, `-token X`) or in SQL (`IDENTIFIED BY`); a bare label needs `=`
+# or `:`. The conditionals refuse the match, so the scan goes on along the line
+# exactly as bin/secrets-redact skips the label and keeps looking.
+$Separator = '"?(?:[^\S\n]*[=:][^\S\n]*|(?(dash)[^\S\n]+|(?(sql)[^\S\n]+|(?!))))'
 #
 # Deliberately not RegexOptions.Compiled. Measured 2026-09-16, ten runs each:
 # compiling costs 0.107 s per invocation and saves 0.32 s on a 1.1 MB payload,

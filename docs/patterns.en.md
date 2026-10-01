@@ -142,6 +142,11 @@ letters mean other things elsewhere, and `ls -p`, `grep -a` and `sort -u` stay
 untouched. Only the value is replaced: the flag and the user name in `admin:`
 stay readable.
 
+A bare word followed only by a space is not a label. `ok  pass  NAME`,
+`expect pass "case name"` and "the password field" are prose and test reports,
+not assignments. A space separates a value only after a flag (`--pass X`,
+`-token X`) or in SQL (`IDENTIFIED BY`); a bare word needs `=` or `:`.
+
 The value itself must still look like a secret: 16 or more characters from
 `A-Za-z0-9+/=_.~-`. Sixteen, not thirty-two, because the label has already done
 most of the work — an md5 is 32 and a git SHA is 40, so length on its own can
