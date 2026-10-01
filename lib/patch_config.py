@@ -706,6 +706,52 @@ def patch_opencode(data: dict, remove: bool, with_rule: bool = False) -> list[st
     return changed
 
 
+# Codex reads a file in ~/.codex/memories/ only when an @-line in
+# ~/.codex/AGENTS.md names it — dropping the rule there is not enough, the same
+# way an Opencode instruction file is dead until opencode.json lists it. Until
+# 2026-10-01 this line on the author's machine came from a second installer
+# (a config canon) that also wrote the rule; on any other machine the Codex
+# copy of the rule was never read.
+#
+# Matching is by file name: an @-line naming the rule under another directory
+# counts, so the rule is never loaded twice. Other lines are never rewritten or
+# reordered; the reference is appended, and --remove drops only lines that name
+# this rule.
+CODEX_AGENTS = os.path.join(HOME, ".codex", "AGENTS.md")
+CODEX_RULE = os.path.join(HOME, ".codex", "memories", "secrets-hygiene.md")
+
+
+def patch_codex_agents(remove: bool, dry_run: bool) -> list[str]:
+    name = os.path.basename(CODEX_RULE)
+    try:
+        with open(CODEX_AGENTS, encoding="utf-8") as fh:
+            body = fh.read()
+    except FileNotFoundError:
+        body = ""
+    lines = body.splitlines()
+    ours = [ln for ln in lines
+            if ln.startswith("@") and ln.rstrip().rsplit("/", 1)[-1] == name]
+    if remove:
+        if not ours:
+            return []
+        if not dry_run:
+            keep = [ln for ln in lines if ln not in ours]
+            tmp = CODEX_AGENTS + ".env2hell-tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(keep) + ("\n" if keep else ""))
+            os.replace(tmp, CODEX_AGENTS)
+        return ["rule reference removed from AGENTS.md"]
+    if ours:
+        return []
+    if not dry_run:
+        os.makedirs(os.path.dirname(CODEX_AGENTS), exist_ok=True)
+        with open(CODEX_AGENTS, "a", encoding="utf-8") as fh:
+            if body and not body.endswith("\n"):
+                fh.write("\n")
+            fh.write(f"@{CODEX_RULE}\n")
+    return ["rule referenced from AGENTS.md"]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("ide", choices=sorted(CONFIG))
@@ -773,8 +819,18 @@ def main() -> int:
             changed += patch_notice_hooks(
                 args.ide, data, args.redact or "", args.remove)
 
+    # A second file, written on its own: AGENTS.md is not part of hooks.json,
+    # and a change there alone must not rewrite the hooks file.
+    agents = []
+    if args.ide == "codex" and (args.with_rule or args.remove):
+        agents = patch_codex_agents(args.remove, args.dry_run)
+
+    prefix = "    would " if args.dry_run else "    "
     if not changed:
-        print("    = already current")
+        for line in agents:
+            print(f"{prefix}{line}")
+        if not agents:
+            print("    = already current")
         return 0
 
     # A JSONC file that actually carries comments cannot be written back: the
@@ -794,8 +850,7 @@ def main() -> int:
         return 1
 
     save(path, data, args.dry_run)
-    prefix = "    would " if args.dry_run else "    "
-    for line in changed:
+    for line in changed + agents:
         print(f"{prefix}{line}")
     return 0
 

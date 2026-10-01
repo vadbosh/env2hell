@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Codex now reads the rule.** The installer copied it to
+  `~/.codex/memories/secrets-hygiene.md`, but Codex loads a memory file only
+  when `~/.codex/AGENTS.md` names it in an `@` line, and nothing wrote that
+  line. On the author's machine a second installer — a config canon that also
+  shipped the rule — had added it, which hid the gap; anywhere else the Codex
+  copy of the rule was never read. `lib/patch_config.py` (`--with-rule`, which
+  install.sh passes by default) and `install.ps1` now append the line once,
+  matched by file name, and `--remove` drops only that line. Seven cases in
+  tests/test_install.sh, one of them through install.ps1.
+
 ## 0.11.1 — 2026-10-01
 
 ### Fixed

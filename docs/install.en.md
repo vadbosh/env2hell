@@ -12,6 +12,7 @@ Nothing outside your home directory. Concretely:
 | `~/.codex/hooks.json` | one `PreToolUse` entry added |
 | `~/.config/opencode/opencode.json` | plugin registered, permission rules written, rule file added to `instructions` |
 | `~/.config/opencode/plugins/secrets-guard.ts` | plugin, copied |
+| `~/.codex/AGENTS.md` | one `@` line naming the rule file — Codex reads a memory only when this file names it |
 | `~/.claude/rules/`, `~/.config/opencode/instructions/`, `~/.codex/memories/` | the rule file |
 
 Only assistants that already exist are written to. Creating a configuration

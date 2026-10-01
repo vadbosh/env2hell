@@ -82,6 +82,27 @@ function Install-File ($Source, $Target) {
     Copy-Item $Source $Target -Force
 }
 
+# Codex reads a file in .codex\memories only when an @-line in .codex\AGENTS.md
+# names it. Same rule as patch_codex_agents in lib/patch_config.py: matched by
+# file name, appended, never reordering what is there.
+function Update-CodexAgents ($RulePath) {
+    $agents = "$Home_\.codex\AGENTS.md"
+    $name = Split-Path -Leaf $RulePath
+    $body = if (Test-Path $agents) { Get-Content -Raw $agents } else { '' }
+    if ($null -eq $body) { $body = '' }
+    foreach ($line in ($body -split "`r?`n")) {
+        if ($line.StartsWith('@') -and (($line.TrimEnd() -split '[\\/]')[-1] -eq $name)) {
+            Say "    = $agents (@$name)"; return
+        }
+    }
+    if ($DryRun) { Say "    would reference $name from $agents"; return }
+    $sep = if ($body -and -not $body.EndsWith("`n")) { "`n" } else { '' }
+    # Add-Content, not [IO.File]: the provider resolves the backslashes, .NET
+    # on a non-Windows pwsh would take them as part of the file name.
+    Add-Content -Path $agents -Value "$sep@$RulePath`n" -NoNewline
+    Say "    + $agents (@$name)"
+}
+
 # Only assistants that are already installed are written to.
 function Get-Ides {
     if ($Ide) { return @($Ide) }
@@ -526,6 +547,7 @@ foreach ($name in $ides) {
 
     if (-not $NoRule) {
         Install-File "$Src\rules\secrets-hygiene.md" (Get-RuleTarget $name)
+        if ($name -eq 'codex') { Update-CodexAgents (Get-RuleTarget $name) }
     }
 }
 

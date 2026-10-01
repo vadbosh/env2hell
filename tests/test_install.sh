@@ -859,6 +859,13 @@ PY
 $(diff <(printf '%s\n' "$ps_first") <(ps_shape) | sed 's/^/        /')"
     fi
 
+    ps_refs="$(grep -c 'secrets-hygiene.md$' "$ps_home/.codex/AGENTS.md" 2>/dev/null)"
+    if [ "$ps_refs" = "1" ]; then
+        ok "install.ps1: three runs reference the Codex rule from AGENTS.md once"
+    else
+        no "install.ps1: three runs reference the Codex rule from AGENTS.md once" "got ${ps_refs:-no file}"
+    fi
+
     # One line per entry the port is supposed to write, named the way a reader
     # would name it rather than by the regex that finds it.
     while IFS='|' read -r label want; do
@@ -889,6 +896,64 @@ PY
     fi
 else
     printf '  skip  install.ps1 end to end — pwsh not installed\n'
+fi
+
+# ── Codex reads the rule only through an @-line in AGENTS.md ────────────────
+#
+# Writing ~/.codex/memories/secrets-hygiene.md is not enough: Codex loads a
+# memory file only when ~/.codex/AGENTS.md names it. Until 2026-10-01 the line
+# came from a second installer on the author's machine and from nothing
+# anywhere else.
+agents="$tmp/home/.codex/AGENTS.md"
+refs () { grep -c 'secrets-hygiene.md$' "$agents" 2>/dev/null || true; }
+
+fresh codex
+run codex --with-rule; run codex --with-rule; run codex --with-rule
+if [ "$(refs)" = "1" ] && [ "$(head -c1 "$agents")" = "@" ]; then
+    ok "codex: three runs reference the rule from AGENTS.md once"
+else
+    no "codex: three runs reference the rule from AGENTS.md once" "got $(refs) in: $(cat "$agents" 2>/dev/null)"
+fi
+
+fresh codex
+printf '# mine\n@/elsewhere/secrets-hygiene.md\n@/x/other.md' > "$agents"
+run codex --with-rule
+if [ "$(refs)" = "1" ] && [ "$(head -1 "$agents")" = "# mine" ]; then
+    ok "codex: a reference under another directory counts; nothing is reordered"
+else
+    no "codex: a reference under another directory counts" "$(cat "$agents")"
+fi
+
+fresh codex
+printf '@/x/other.md' > "$agents"
+run codex --with-rule
+if [ "$(sed -n 1p "$agents")" = "@/x/other.md" ] && [ "$(refs)" = "1" ]; then
+    ok "codex: appended after a last line without a newline, not glued to it"
+else
+    no "codex: appended after a last line without a newline" "$(cat "$agents")"
+fi
+
+run codex --remove
+if [ "$(refs)" = "0" ] && grep -qx '@/x/other.md' "$agents"; then
+    ok "codex: --remove drops only the rule's line"
+else
+    no "codex: --remove drops only the rule's line" "$(cat "$agents")"
+fi
+
+fresh codex
+run codex --guard "$GUARD"
+if [ ! -e "$agents" ]; then
+    ok "codex: without --with-rule AGENTS.md is not touched"
+else
+    no "codex: without --with-rule AGENTS.md is not touched" "$(cat "$agents")"
+fi
+
+fresh codex
+run codex --with-rule --dry-run
+if [ ! -e "$agents" ]; then
+    ok "codex: --dry-run writes no AGENTS.md"
+else
+    no "codex: --dry-run writes no AGENTS.md" "$(cat "$agents")"
 fi
 
 printf '\npassed %d, failed %d\n' "$pass" "$fail"

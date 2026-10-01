@@ -12,6 +12,7 @@
 | `~/.codex/hooks.json` | добавляется одна запись `PreToolUse` |
 | `~/.config/opencode/opencode.json` | регистрируется плагин, записываются правила разрешений, файл правила вносится в список `instructions` |
 | `~/.config/opencode/plugins/secrets-guard.ts` | копируется плагин |
+| `~/.codex/AGENTS.md` | одна строка `@` с путём к файлу правила — Codex читает memory только по такой ссылке |
 | `~/.claude/rules/`, `~/.config/opencode/instructions/`, `~/.codex/memories/` | файл правила |
 
 Записи вносятся только в те ассистенты, которые уже установлены. Создавать
