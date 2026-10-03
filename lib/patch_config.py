@@ -5,6 +5,7 @@ Each assistant stores the same intent in a different place:
 
     claude    ~/.claude/settings.json      hooks.PreToolUse[] entry, matcher "Bash"
                                            hooks.PostToolUse[] entry, matcher "Bash"
+                                           hooks.UserPromptSubmit[] entry (@ files)
     codex     ~/.codex/hooks.json          hooks.PreToolUse[] entry, matcher "^Bash$"
     opencode  ~/.config/opencode/opencode.json  (or .jsonc — whichever exists)
                                            plugin[] entry + permission.bash deny rules
@@ -661,6 +662,59 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
     return changed
 
 
+def patch_prompt_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
+    """Claude Code's UserPromptSubmit: files the user attaches with `@path`.
+
+    The client reads an attached file itself and puts it in the conversation
+    whole; no tool runs, so the PreToolUse guard and the PostToolUse redactor
+    never see it. On 2026-10-03 a Telegram bot token reached a transcript that
+    way. The guard's prompt branch judges each attached path by name and by
+    content and blocks the prompt before it is processed.
+
+    No matcher: UserPromptSubmit has no tool to match on.
+    """
+    if ide != "claude":
+        return []                      # the event is Claude Code's
+
+    changed = []
+    hooks = data.setdefault("hooks", {})
+    prompt = hooks.setdefault("UserPromptSubmit", [])
+
+    present = [
+        e for e in prompt
+        if any(is_ours(h.get("command", ""), "secrets-guard")
+               for h in e.get("hooks", []))
+    ]
+
+    if remove:
+        for entry in present:
+            prompt.remove(entry)
+            changed.append("prompt-hook removed")
+        if not prompt:
+            hooks.pop("UserPromptSubmit", None)
+        return changed
+
+    if present:
+        for entry in present:
+            changed += refresh_timeout(entry, "secrets-guard", GUARD_TIMEOUT)
+            for h in entry.get("hooks", []):
+                if is_ours(h.get("command", ""), "secrets-guard") and h["command"] != guard:
+                    h["command"] = guard
+                    changed.append("prompt-hook repointed")
+        return changed
+
+    prompt.append({
+        "hooks": [{
+            "type": "command",
+            "command": guard,
+            "timeout": GUARD_TIMEOUT,
+            "statusMessage": "secrets-guard...",
+        }],
+    })
+    changed.append("prompt-hook added")
+    return changed
+
+
 def patch_opencode(data: dict, remove: bool, with_rule: bool = False) -> list[str]:
     changed = []
     instructions = data.setdefault("instructions", [])
@@ -773,6 +827,7 @@ def main() -> int:
             patch_opencode(wanted, remove=False, with_rule=args.with_rule)
         else:
             patch_hooks(args.ide, wanted, args.guard or "<path>/secrets-guard", False)
+            patch_prompt_hooks(args.ide, wanted, args.guard or "<path>/secrets-guard", False)
             patch_post_hooks(args.ide, wanted,
                              redact_command(args.ide, args.redact or "<path>/secrets-redact"),
                              False)
@@ -807,6 +862,7 @@ def main() -> int:
         changed = patch_opencode(data, args.remove, args.with_rule)
     else:
         changed = patch_hooks(args.ide, data, args.guard, args.remove)
+        changed += patch_prompt_hooks(args.ide, data, args.guard, args.remove)
         if args.ide in (REDACT_IDES | WARN_IDES) and (args.redact or args.remove):
             command = redact_command(args.ide, args.redact) if args.redact else ""
             changed += patch_post_hooks(args.ide, data, command, args.remove)

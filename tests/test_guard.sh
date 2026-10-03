@@ -574,6 +574,44 @@ check_read 0 /srv/app/.env.example
 check_read 0 /srv/app/README.md
 check_read 0 /home/user/.ssh/config
 check_read 0 "$PE_DIR/notes.txt"    'Read of a fixture file stays allowed'
+
+echo
+echo "a prompt — files attached with @ (UserPromptSubmit)"
+# check_prompt <block|allow> <prompt> [label]: Claude Code's UserPromptSubmit
+# payload. The verdict is JSON on stdout ({"decision":"block"}), not an exit
+# code, so these cases run one process each instead of through the pwsh server,
+# which answers with exit codes only.
+check_prompt() {
+    local want="$1" text="$2" label="${3:-$2}" out got payload
+    payload="$(jq -nc --arg p "$text" --arg c "$PE_DIR" \
+        '{hook_event_name:"UserPromptSubmit", prompt:$p, cwd:$c}')"
+    # shellcheck disable=SC2086
+    if [ -n "$RUNNER" ]; then
+        out="$(printf '%s' "$payload" | $RUNNER "$GUARD" 2>/dev/null)"
+    else
+        out="$(printf '%s' "$payload" | "$GUARD" 2>/dev/null)"
+    fi
+    got="$(printf '%s' "$out" | jq -r '.decision // empty' 2>/dev/null)"
+    [ -n "$got" ] || got=allow
+    if [ "$got" = "$want" ]; then
+        pass=$((pass + 1)); printf '  ok    %-52s %s\n' "$label" "$got"
+    else
+        fail=$((fail + 1)); printf '  FAIL  %-52s %s (expected %s)\n' "$label" "$got" "$want"
+    fi
+}
+# The token is assembled at run time: no line of this file has its shape.
+printf 'api_hash %s:%s%s\n' 1234567890 AA abcdefghijklmnopqrstuvwxyzABCDEFG > "$PE_DIR/tg.txt"
+printf 'nothing secret here\n' > "$PE_DIR/plain.md"
+printf 'A=1\n' > "$PE_DIR/.env"
+check_prompt block "@$PE_DIR/tg.txt what is in it"        '@file holding a token'
+check_prompt block "look at @tg.txt please"               '@relative path, resolved in cwd'
+check_prompt block "@\"$PE_DIR/tg.txt\", is it right?"     '@"quoted path" with punctuation after'
+check_prompt block "@$PE_DIR/tg.txt#L1-2"                 '@file with a #L line range'
+check_prompt block "@$PE_DIR/.env"                        '@.env by name alone'
+check_prompt allow "@$PE_DIR/plain.md summarise"          '@file with nothing secret'
+check_prompt allow "write to user@$PE_DIR/tg.txt"         'user@host is not an attachment'
+check_prompt allow "@$PE_DIR/missing.txt"                 '@path that does not exist'
+check_prompt allow "no attachment in this prompt"          'a prompt with no @'
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -65,7 +65,18 @@ if (($payload.PSObject.Properties.Name -contains 'tool_name') -and
 # A relative path in pass E means the session's directory, which the payload names.
 $sessionDir = $null
 if ($payload.PSObject.Properties.Name -contains 'cwd') { $sessionDir = [string]$payload.cwd }
-if ([string]::IsNullOrWhiteSpace($command) -and [string]::IsNullOrWhiteSpace($readPath)) { exit 0 }
+# A prompt submitted to Claude Code (UserPromptSubmit). `@path` in it attaches
+# the whole file to the conversation, and the client reads it itself: no tool
+# runs, so neither the Read check nor secrets-redact sees the content. The
+# attached paths are judged in their own section further down.
+$prompt = $null
+if (($payload.PSObject.Properties.Name -contains 'hook_event_name') -and
+    ([string]$payload.hook_event_name -ceq 'UserPromptSubmit') -and
+    ($payload.PSObject.Properties.Name -contains 'prompt')) {
+    $prompt = [string]$payload.prompt
+}
+if ([string]::IsNullOrWhiteSpace($command) -and [string]::IsNullOrWhiteSpace($readPath) -and
+    [string]::IsNullOrWhiteSpace($prompt)) { exit 0 }
 if ($null -eq $command) { $command = '' }
 
 # A heredoc body is data being written to a file, not a list of commands. Both
@@ -87,7 +98,8 @@ foreach ($line in ($command -split '\r?\n')) {
     $kept += $line
 }
 $command = $kept -join "`n"
-if ([string]::IsNullOrWhiteSpace($command) -and [string]::IsNullOrWhiteSpace($readPath)) { exit 0 }
+if ([string]::IsNullOrWhiteSpace($command) -and [string]::IsNullOrWhiteSpace($readPath) -and
+    [string]::IsNullOrWhiteSpace($prompt)) { exit 0 }
 
 # ---------- too large to check ----------
 # Failing open is the right answer to an unexpected payload — that contract
@@ -398,6 +410,46 @@ $rawSubs += $buf
 # names are renamed out of the text before the path is looked for. The
 # replacement contains no `env`, because -match is case-insensitive.
 $envTemplates = '\.env\.(example|sample|template|dist|defaults)'
+
+# ── a prompt: files attached with @ ─────────────────────────────────────────
+# The POSIX guard has the reasoning. Each `@path` (or `@"path with spaces"`) at
+# the start of a word is judged by name against the credential stores and by
+# content through the redactor's --filter; a hit blocks the prompt with a reason
+# that names the file, never the value.
+if (-not [string]::IsNullOrWhiteSpace($prompt)) {
+    if ($sessionDir -and (Test-Path -LiteralPath $sessionDir -PathType Container)) {
+        Set-Location -LiteralPath $sessionDir
+    }
+    $redactorP = $env:SECRETS_REDACT_BIN
+    if (-not $redactorP) { $redactorP = Join-Path $PSScriptRoot 'secrets-redact.ps1' }
+    $scanMaxP = 1048576
+    if ($env:SECRETS_GUARD_SCAN_MAX) { $scanMaxP = [long]$env:SECRETS_GUARD_SCAN_MAX }
+    $found = @()
+    foreach ($m in [regex]::Matches($prompt, '(?:^|[\s(])@("[^"]+"|[^\s"]+)', 'Multiline')) {
+        $ref = $m.Groups[1].Value -replace '"', ''
+        $ref = $ref -replace '#L?[0-9][0-9-]*$', '' -replace '[,.;:!?)]+$', ''
+        if (-not $ref) { continue }
+        $f = $ref
+        if ($f -like '~/*') { $f = Join-Path $HOME $f.Substring(2) }
+        $probe = ' ' + ($f -replace $envTemplates, '.TPLFILE')
+        if ($probe -match $secrets) { $found += "@$ref (a credential store)"; continue }
+        try {
+            if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { continue }
+            $item = Get-Item -LiteralPath $f
+            if ($item.Length -gt $scanMaxP) { continue }
+            if (-not (Test-Path -LiteralPath $redactorP -PathType Leaf)) { continue }
+            $pwshExe = (Get-Process -Id $PID).Path
+            [System.IO.File]::ReadAllText($item.FullName) |
+                & $pwshExe -NoProfile -File $redactorP --filter *> $null
+            if ($LASTEXITCODE -eq 0) { $found += "@$ref (holds a credential-shaped value)" }
+        } catch { continue }
+    }
+    if ($found.Count -gt 0) {
+        $reason = "[secrets-guard] Blocked: $($found -join '; '). A file attached with @ goes into the conversation whole, and no hook sees it on the way, so nothing masks it. Name the path without the @ and let the assistant read only what it needs, or check one variable with safe-env."
+        @{ decision = 'block'; reason = $reason } | ConvertTo-Json -Compress
+    }
+    exit 0
+}
 
 # ── the Read tool: a path from the same list ───────────────────────────────
 # Claude Code masks what Read returns afterwards, but a masked .env is still a

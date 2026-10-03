@@ -14,6 +14,17 @@
   tests/test_redact.sh (labelled, inside a Bot API URL, after a wrong label)
   and a row in tests/test_parity_safe_env.sh, both assembled at run time so
   the repository holds no string of the token's shape.
+- **A file attached with `@` in a Claude Code prompt is checked.** The client
+  reads an attached file itself and puts it in the conversation whole; no tool
+  runs, so neither the guard nor the redactor ever saw it, and a Telegram bot
+  token reached a transcript that way on 2026-10-03. secrets-guard now also
+  answers `UserPromptSubmit`: each `@path` is judged by name against the
+  credential stores and by content through `secrets-redact --filter`, and a hit
+  blocks the prompt with a reason naming the file, never the value. Both
+  implementations; lib/patch_config.py and install.ps1 wire the entry (Claude
+  Code only, no matcher) and `--remove` takes it out. Nine cases in
+  tests/test_guard.sh (POSIX and `--pwsh`), two in tests/test_install.sh;
+  checked end to end with `claude -p`.
 
 ## 0.11.2 — 2026-10-01
 

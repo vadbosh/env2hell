@@ -233,6 +233,30 @@ check exists because a masked `.env` is still a list of every variable name and
 every value too short to look like a key. Codex has no Read tool, so its
 matcher stays `^Bash$`.
 
+## A prompt — files attached with @
+
+In Claude Code, `@path` in a prompt attaches the file: the client reads it and
+puts the whole content into the conversation. No tool runs, so neither the Read
+check above nor `secrets-redact` ever sees it. On 2026-10-03 a Telegram bot
+token reached a session transcript exactly that way, from
+`@/root/sek/tg-mtproto.env`.
+
+So the guard is also wired to `UserPromptSubmit`. Every `@path` (or
+`@"path with spaces"`) at the start of a word is judged twice: by name, against
+the credential stores of the Read check, and by content, through the
+redactor's own `--filter`, the way pass E judges a file a reader is about to
+print. A hit blocks the prompt with `{"decision":"block"}` and a reason that
+names the file and never the value. A reference that is not a readable regular
+file — an `@agent` mention, a directory, a path that does not exist — is left
+alone, and so is a file over `SECRETS_GUARD_SCAN_MAX`.
+
+What blocking does not do: the prompt text itself still lands in the transcript
+and the prompt history, which is harmless here because it holds only the path.
+The file's content does not. Verified end to end with `claude -p`: an allowed
+`@file` reaches the model, a blocked one leaves no copy of the file in the
+session's transcripts. Codex and Opencode have no equivalent hook wired by
+this installer.
+
 ## Failing open
 
 If the payload is not JSON, or `jq` is missing, or the command field is empty,

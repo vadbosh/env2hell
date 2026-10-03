@@ -400,6 +400,50 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
     Say $(if ($DryRun) { '    would add failure hook' } else { '    failure hook added' })
 }
 
+# Claude Code's UserPromptSubmit: files the user attaches with `@path`. The
+# client reads an attached file itself and puts it in the conversation whole;
+# no tool runs, so neither the PreToolUse guard nor the redactor sees it. The
+# guard's prompt branch judges each attached path by name and by content and
+# blocks the prompt. No matcher: the event has no tool to match on.
+function Update-PromptConfig ($Name, $Path, $GuardPath) {
+    if ($Name -ne 'claude') { return }        # the event is Claude Code's
+
+    $data = Read-Json $Path
+    if (-not (Test-Property $data 'hooks')) {
+        Set-Property $data 'hooks' ([pscustomobject]@{})
+    }
+    if (-not (Test-Property $data.hooks 'UserPromptSubmit')) {
+        Set-Property $data.hooks 'UserPromptSubmit' @()
+    }
+
+    $entries = @($data.hooks.UserPromptSubmit)
+    $already = @($entries | Where-Object {
+        $_.hooks | Where-Object { Test-OurCommand $_.command 'secrets-guard' }
+    })
+    if ($already.Count -gt 0) {
+        $fixed = 0
+        foreach ($e in $already) { $fixed += Update-Timeout $e 'secrets-guard' $GuardTimeout }
+        if ($fixed -eq 0) { Say '    = prompt hook already wired'; return }
+        Write-Json $Path $data
+        Say $(if ($DryRun) { '    would refresh the prompt hook' }
+              else         { '    prompt hook refreshed' })
+        return
+    }
+
+    $entry = [pscustomobject]@{
+        hooks = @([pscustomobject]@{
+            type          = 'command'
+            shell         = 'powershell'
+            command       = "& `"$GuardPath`""
+            timeout       = $GuardTimeout
+            statusMessage = 'secrets-guard...'
+        })
+    }
+    $data.hooks.UserPromptSubmit = @($entries + $entry)
+    Write-Json $Path $data
+    Say $(if ($DryRun) { '    would add prompt hook' } else { '    prompt hook added' })
+}
+
 # Tools whose result carries a secret in a shape not worth rewriting.
 #
 # `Read` and `Grep` hand over one string and the hook replaces it. `Edit` does
@@ -540,6 +584,7 @@ foreach ($name in $ides) {
         Update-OpencodeConfig $config (-not $NoRule)
     } else {
         Update-HookConfig    $name $config $guard
+        Update-PromptConfig  $name $config $guard
         Update-RedactConfig  $name $config $redact
         Update-FailureConfig $name $config $redact
         Update-NoticeConfig  $name $config $redact

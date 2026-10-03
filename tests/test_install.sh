@@ -114,8 +114,9 @@ $(diff <(printf '%s\n' "$first") <(printf '%s\n' "$second") | sed 's/^/        /
 done
 
 # ── what each assistant is supposed to end up with ──────────────────────────
-# Claude Code takes three: the guard before the command, the redactor on the
-# results it can rewrite, and a warn-only entry on the ones it cannot. Codex
+# Claude Code takes four: the guard before the command and on submitted prompts
+# (files attached with @), the redactor on the results it can rewrite, and a
+# warn-only entry on the ones it cannot. Codex
 # takes two, both --warn-only on the shell tool, because its hook contract has
 # no field that replaces output.
 fresh
@@ -126,7 +127,8 @@ for want in \
     "PreToolUse.*secrets-guard" \
     "PostToolUse.*Bash|Read|Grep.*secrets-redact$" \
     "PostToolUse.*Edit|Write|mcp__.*--warn-only" \
-    "PostToolUseFailure.*--warn-only"; do
+    "PostToolUseFailure.*--warn-only" \
+    "UserPromptSubmit.*secrets-guard"; do
     if grep -qE "$want" <<< "$claude_shape"; then
         ok "claude: wired ${want%%.*} — $(printf '%s' "$want" | cut -d. -f2- | head -c 30)"
     else
@@ -762,10 +764,10 @@ PY
 }
 
 installed="$(sh_state)"
-# Four hook commands on Claude Code: the guard before the command, the redactor
-# on results it can rewrite, the notice on the ones it cannot, and the failure
-# warning.
-if [ "$installed" = "hooks=4 rules=$want_rules plugins=1 bins=3 model=kept-by-the-user" ]; then
+# Five hook commands on Claude Code: the guard before the command and on
+# submitted prompts (files attached with @), the redactor on results it can
+# rewrite, the notice on the ones it cannot, and the failure warning.
+if [ "$installed" = "hooks=5 rules=$want_rules plugins=1 bins=3 model=kept-by-the-user" ]; then
     ok "install.sh: the whole thing lands ($installed)"
 else
     no "install.sh: the whole thing lands" "got [$installed]"
@@ -881,6 +883,7 @@ the guard, before the command|PreToolUse.*Bash.*timeout=
 the redactor, on results it can rewrite|PostToolUse.*Bash.Read.Grep.*timeout=
 the notice, on the ones it cannot|PostToolUse.*Edit.Write.mcp__.*timeout=
 the failure warning|PostToolUseFailure.*Edit.Write.mcp__.*timeout=
+the prompt check, on files attached with @|UserPromptSubmit.*timeout=
 ENTRIES
 
     oc_written="$(python3 - "$ps_home/.config/opencode/opencode.json" <<'PY'
