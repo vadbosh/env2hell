@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The installer says when Codex has not trusted the hooks yet.** Codex runs
+  a hook only after the user trusts it in its own UI (the start-up review, or
+  `t` in the hooks browser) and records that as a `trusted_hash` under
+  `[hooks.state]` in `~/.codex/config.toml`. Until then a freshly wired hook is
+  skipped without a word — on 2026-10-03 the new UserPromptSubmit check sat
+  installed and inert. `lib/patch_config.py` now reads `[hooks.state]` after
+  wiring Codex and prints how many of this tool's hooks are not trusted yet;
+  `install.ps1` prints the reminder unconditionally. docs/install.*.md explain
+  the trust step and how to check it; two cases in tests/test_install.sh.
+
 ## 0.12.0 — 2026-10-03
 
 ### Fixed

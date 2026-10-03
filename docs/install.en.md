@@ -61,8 +61,20 @@ destructive-command guard, the two are independent.
 ### Codex
 
 Same shape, in `~/.codex/hooks.json`, with the matcher written as a regular
-expression (`^Bash$`). Do not hand-edit `[hooks.state]` in `config.toml` — that
-section is a cache Codex maintains itself.
+expression (`^Bash$`).
+
+**Codex runs a hook only after you trust it.** A new or changed entry in
+`hooks.json` does nothing until then — no error, no message, the call simply
+goes through. Trust is given in Codex itself: at the next start it lists the
+new hooks, choose "Trust all and continue"; or, in a running session, open the
+hooks browser and press `t`. Codex records the answer in `config.toml`, one
+`[hooks.state."<path to hooks.json>:<event>:<n>:<n>"]` section per hook with a
+`trusted_hash`. Do not write that section by hand: the hash is Codex's own.
+
+`install.sh` reads those sections after wiring and says how many of its hooks
+are not trusted yet; `install.ps1` prints the reminder every time. To check
+again later, run `./install.sh --ide codex`: wiring is idempotent, and the
+warning is there as long as any of the hooks is not trusted.
 
 ### Opencode
 

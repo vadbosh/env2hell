@@ -119,6 +119,34 @@ done
 # warn-only entry on the ones it cannot. Codex
 # takes two, both --warn-only on the shell tool, because its hook contract has
 # no field that replaces output.
+# Codex runs a hook only after the user trusts it in its own UI, and the trust
+# lives in config.toml [hooks.state]. A fresh home has none: the patcher must say
+# so. Once every entry carries a trusted_hash, it must stay quiet.
+fresh
+trust_out="$(HOME="$tmp/home" python3 "$PATCH" codex --guard "$GUARD" --redact "$REDACT" 2>&1)"
+if grep -q 'not yet' <<< "$trust_out"; then
+    ok "codex: warns that new hooks are not trusted yet"
+else
+    no "codex: warns about untrusted hooks" "no warning in:
+$(sed 's/^/        /' <<< "$trust_out")"
+fi
+python3 - "$tmp/home/.codex" <<'PY'
+import json, re, sys
+d = sys.argv[1]; p = f"{d}/hooks.json"
+snake = lambda e: re.sub(r"(?<!^)(?=[A-Z])", "_", e).lower()
+with open(f"{d}/config.toml", "w") as fh:
+    for event, blocks in json.load(open(p))["hooks"].items():
+        for i, b in enumerate(blocks):
+            for j, _ in enumerate(b.get("hooks", [])):
+                fh.write(f'[hooks.state."{p}:{snake(event)}:{i}:{j}"]\ntrusted_hash = "sha256:0"\n\n')
+PY
+trust_out="$(HOME="$tmp/home" python3 "$PATCH" codex --guard "$GUARD" --redact "$REDACT" 2>&1)"
+if grep -q 'not yet' <<< "$trust_out"; then
+    no "codex: quiet once every hook is trusted" "still warns:
+$(sed 's/^/        /' <<< "$trust_out")"
+else
+    ok "codex: quiet once every hook is trusted"
+fi
 fresh
 run claude
 claude_shape="$(shape claude)"

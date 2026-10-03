@@ -54,6 +54,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -813,6 +814,51 @@ def patch_codex_agents(remove: bool, dry_run: bool) -> list[str]:
     return ["rule referenced from AGENTS.md"]
 
 
+def codex_untrusted(path: str, data: dict) -> int:
+    """How many of this tool's Codex hooks Codex will not run yet.
+
+    Codex runs a hook only after the user trusts it: ~/.codex/config.toml keeps
+    `[hooks.state."<hooks.json>:<event>:<i>:<j>"] trusted_hash` per hook, and
+    only Codex's own UI writes it (the start-up review, or `t` in the hooks
+    browser). A new entry is silently skipped until then — on 2026-10-03 two of
+    five UserPromptSubmit hooks never ran on a machine where everything looked
+    installed. A trusted hook whose command later changed asks again; that case
+    is not visible from here, only a missing entry is.
+    """
+    try:
+        import tomllib
+    except ImportError:                 # Python < 3.11: cannot tell, say nothing
+        return 0
+    state = {}
+    cfg = os.path.join(os.path.dirname(path), "config.toml")
+    try:
+        with open(cfg, "rb") as fh:
+            state = tomllib.load(fh).get("hooks", {}).get("state", {}) or {}
+    except (OSError, ValueError):
+        state = {}
+    snake = lambda e: re.sub(r"(?<!^)(?=[A-Z])", "_", e).lower()
+    missing = 0
+    for event, blocks in (data.get("hooks") or {}).items():
+        for i, entry in enumerate(blocks or []):
+            for j, h in enumerate(entry.get("hooks", [])):
+                cmd = str(h.get("command", ""))
+                if not (is_ours(cmd, "secrets-guard") or is_ours(cmd, "secrets-redact")):
+                    continue
+                if not (state.get(f"{path}:{snake(event)}:{i}:{j}") or {}).get("trusted_hash"):
+                    missing += 1
+    return missing
+
+
+def warn_codex_trust(ide: str, path: str, data: dict, remove: bool) -> None:
+    if ide != "codex" or remove:
+        return
+    n = codex_untrusted(path, data)
+    if n:
+        print(f"    ! Codex runs a hook only once it is trusted, and {n} of these are not yet:")
+        print("      start `codex` and choose \"Trust all and continue\" (or open the hooks")
+        print("      browser in a session and press t). Until then they do nothing.")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("ide", choices=sorted(CONFIG))
@@ -894,6 +940,7 @@ def main() -> int:
             print(f"{prefix}{line}")
         if not agents:
             print("    = already current")
+        warn_codex_trust(args.ide, path, data, args.remove)
         return 0
 
     # A JSONC file that actually carries comments cannot be written back: the
@@ -915,6 +962,7 @@ def main() -> int:
     save(path, data, args.dry_run)
     for line in changed + agents:
         print(f"{prefix}{line}")
+    warn_codex_trust(args.ide, path, data, args.remove)
     return 0
 
 

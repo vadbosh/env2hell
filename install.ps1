@@ -588,6 +588,13 @@ foreach ($name in $ides) {
         Update-RedactConfig  $name $config $redact
         Update-FailureConfig $name $config $redact
         Update-NoticeConfig  $name $config $redact
+        # Codex runs a hook only once the user trusts it in Codex's own UI; until
+        # then the entries above do nothing. install.sh checks [hooks.state] in
+        # config.toml and names the count; here the note is unconditional.
+        if ($name -eq 'codex' -and -not $DryRun) {
+            Warn '    ! Codex runs a hook only once it is trusted. Start codex and choose'
+            Warn '      "Trust all and continue" (or open the hooks browser and press t).'
+        }
     }
 
     if (-not $NoRule) {
