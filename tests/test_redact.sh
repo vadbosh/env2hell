@@ -163,6 +163,24 @@ check_labelled "--token $HEX"   '--token'
 check_labelled "--PASS $HEX"    '--PASS'
 check_labelled "api_key=$HEX"   'api_key='
 
+# A Telegram bot token is `<bot id>:AA<33 characters>`. Tier 2 cannot take it:
+# VALUE stops at the colon, which leaves 8-10 digits under the floor, so the
+# token went through even as TELEGRAM_BOT_TOKEN=… — on 2026-10-03 one reached a
+# session transcript that way. Assembled at run time, like the Stripe row in the
+# parity suite, so no line of this file has the shape a scanner reports.
+TG="$(printf '%s:%s%s' 1234567890 AA abcdefghijklmnopqrstuvwxyzABCDEFG)"
+for line in "TELEGRAM_BOT_TOKEN=$TG" "https://api.telegram.org/bot$TG/sendMessage" "api_hash $TG"; do
+    where="${line%%"$TG"*}"
+    out="$(printf '%s\n' "$line" | run_tool --filter 2>/dev/null)"
+    if grep -qF -- "$TG" <<< "$out"; then
+        no "masks a Telegram bot token after '$where'" "the raw token reached the output"
+    elif grep -q '<REDACTED:' <<< "$out"; then
+        ok "masks a Telegram bot token after '$where'"
+    else
+        no "masks a Telegram bot token after '$where'" "nothing was masked: $out"
+    fi
+done
+
 # Cloud keys with no provider prefix. Tier 1 could never take them by shape:
 # 20 uppercase characters or 40 of base62 also describe a git SHA and half the
 # identifiers in ordinary output. The variable name is the only signal, so it

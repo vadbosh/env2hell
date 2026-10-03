@@ -27,6 +27,7 @@ $patterns = @(
     'xox[baprs]-[A-Za-z0-9-]{10,}'                      # Slack
     'tvly-[A-Za-z0-9-]{10,}'                            # Tavily
     'AIza[A-Za-z0-9_-]{35}'                             # Google
+    '[0-9]{8,10}:AA[A-Za-z0-9_-]{33}'                    # Telegram bot token
     '(sk|rk)_live_[A-Za-z0-9]{20,}'                     # Stripe
     '(?<![A-Za-z0-9_-])sk-(or-v1-|proj-|ant-)?[A-Za-z0-9-]{20,}'  # OpenAI family
     'at-[A-Za-z0-9]{30,}'                               # Atlassian

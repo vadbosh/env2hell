@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Telegram bot tokens are masked.** A token is the bot id, a colon and 35
+  characters starting with `AA`; no tier recognised it. Tier 2 reads a value
+  only up to the colon, so even `TELEGRAM_BOT_TOKEN=<token>` left 8-10 digits,
+  under the floor of 16, and the whole token went through. On 2026-10-03 one
+  reached a session transcript that way. New tier-1 pattern
+  `[0-9]{8,10}:AA[A-Za-z0-9_-]{33}` in bin/safe-env, bin/secrets-redact and
+  both PowerShell ports; a row in docs/patterns.*.md; three cases in
+  tests/test_redact.sh (labelled, inside a Bot API URL, after a wrong label)
+  and a row in tests/test_parity_safe_env.sh, both assembled at run time so
+  the repository holds no string of the token's shape.
+
 ## 0.11.2 — 2026-10-01
 
 ### Fixed

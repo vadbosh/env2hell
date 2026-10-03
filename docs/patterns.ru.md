@@ -24,6 +24,7 @@ TAVILY_API_KEY=<REDACTED:57>
 | Slack | `xox` плюс `b`/`a`/`p`/`r`/`s`, дефис и 10 знаков или больше |
 | Tavily | `tvly-` и 10 знаков или больше |
 | Google | `AIza` и 35 знаков |
+| Telegram, бот | от 8 до 10 цифр, `:AA` и 33 знака |
 | Stripe, боевой | `sk_live_` / `rk_live_` и 20 знаков или больше |
 | Семейство OpenAI | `sk-`, возможно `sk-or-v1-`, `sk-proj-`, `sk-ant-`, и 20 знаков или больше |
 | Atlassian | `at-` и 30 знаков или больше |

@@ -24,6 +24,7 @@ same output and reveals nothing that helps an attacker.
 | Slack | `xox` + `b`/`a`/`p`/`r`/`s` + `-` + 10 or more |
 | Tavily | `tvly-` + 10 or more |
 | Google | `AIza` + 35 |
+| Telegram bot | 8 to 10 digits + `:AA` + 33 |
 | Stripe, live | `sk_live_` / `rk_live_` + 20 or more |
 | OpenAI family | `sk-`, optionally `sk-or-v1-`, `sk-proj-`, `sk-ant-` + 20 or more |
 | Atlassian | `at-` + 30 or more |

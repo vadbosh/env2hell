@@ -99,6 +99,8 @@ PAIRS
 # move it here too rather than weakening the sample: the point of the row is
 # that the value matches the pattern in docs/patterns.md.
 printf 'PARITY_STRIPE=%s_%s_%s\n' sk live abcdefghijklmnopqrstuvwx >> "$tmp/pairs.txt"
+# Telegram bot token, split the same way: GitHub secret scanning knows its shape.
+printf 'PARITY_TELEGRAM=%s:%s%s\n' 1234567890 AA abcdefghijklmnopqrstuvwxyzABCDEFG >> "$tmp/pairs.txt"
 
 # ── POSIX side: one process, the whole table planted with env -i ────────────
 mapfile -t args < "$tmp/pairs.txt"
