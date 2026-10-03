@@ -22,9 +22,12 @@
   credential stores and by content through `secrets-redact --filter`, and a hit
   blocks the prompt with a reason naming the file, never the value. Both
   implementations; lib/patch_config.py and install.ps1 wire the entry (Claude
-  Code only, no matcher) and `--remove` takes it out. Nine cases in
-  tests/test_guard.sh (POSIX and `--pwsh`), two in tests/test_install.sh;
-  checked end to end with `claude -p`.
+  Code and Codex, no matcher) and `--remove` takes it out. Codex has the same
+  event and block contract. Opencode, which reads the attachment itself and
+  fires no tool hook, gets it masked instead: the redactor plugin answers
+  `chat.message` and rewrites the synthetic parts before the message is stored
+  or sent. Nine cases in tests/test_guard.sh (POSIX and `--pwsh`), three in
+  tests/test_install.sh; checked end to end with `claude -p`.
 
 ## 0.11.2 — 2026-10-01
 

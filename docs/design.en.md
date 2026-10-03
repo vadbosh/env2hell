@@ -254,8 +254,20 @@ What blocking does not do: the prompt text itself still lands in the transcript
 and the prompt history, which is harmless here because it holds only the path.
 The file's content does not. Verified end to end with `claude -p`: an allowed
 `@file` reaches the model, a blocked one leaves no copy of the file in the
-session's transcripts. Codex and Opencode have no equivalent hook wired by
-this installer.
+session's transcripts.
+
+Codex has the same event with the same contract — `prompt` in, `decision:
+"block"` and `reason` out, no field that rewrites the prompt — so the same
+guard is wired there. Whether Codex's own `@` inserts a path or the content
+does not change the check.
+
+Opencode has no prompt hook to block with, and does not need one. It reads an
+attached file itself, calling the read tool's `execute()` directly, so no
+`tool.execute.*` hook fires; the content lands in the user message as a
+`synthetic` text part. The redactor plugin answers `chat.message`, which
+receives those parts after they are resolved and before the message is stored
+or sent, and masks them in place. There the value is masked rather than the
+prompt refused.
 
 ## Failing open
 

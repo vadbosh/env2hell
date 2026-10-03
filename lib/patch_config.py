@@ -7,6 +7,7 @@ Each assistant stores the same intent in a different place:
                                            hooks.PostToolUse[] entry, matcher "Bash"
                                            hooks.UserPromptSubmit[] entry (@ files)
     codex     ~/.codex/hooks.json          hooks.PreToolUse[] entry, matcher "^Bash$"
+                                           hooks.UserPromptSubmit[] entry (@ files)
     opencode  ~/.config/opencode/opencode.json  (or .jsonc — whichever exists)
                                            plugin[] entry + permission.bash deny rules
 
@@ -663,7 +664,7 @@ def patch_failure_hooks(ide: str, data: dict, redact: str, remove: bool) -> list
 
 
 def patch_prompt_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[str]:
-    """Claude Code's UserPromptSubmit: files the user attaches with `@path`.
+    """UserPromptSubmit, in Claude Code and Codex: files attached with `@path`.
 
     The client reads an attached file itself and puts it in the conversation
     whole; no tool runs, so the PreToolUse guard and the PostToolUse redactor
@@ -671,10 +672,16 @@ def patch_prompt_hooks(ide: str, data: dict, guard: str, remove: bool) -> list[s
     way. The guard's prompt branch judges each attached path by name and by
     content and blocks the prompt before it is processed.
 
+    Codex has the same event with the same contract (codex-rs/hooks: input
+    `prompt`, output `decision: "block"` + `reason`, no field that rewrites
+    the prompt), so the same guard answers it there. Whether Codex's own `@`
+    inserts a path or the content does not matter to the check: a prompt that
+    names a credential store or a file holding a key is blocked either way.
+
     No matcher: UserPromptSubmit has no tool to match on.
     """
-    if ide != "claude":
-        return []                      # the event is Claude Code's
+    if ide not in ("claude", "codex"):
+        return []                      # Opencode has no such hook; its plugin masks instead
 
     changed = []
     hooks = data.setdefault("hooks", {})

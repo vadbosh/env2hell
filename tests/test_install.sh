@@ -137,6 +137,18 @@ $(printf '%s\n' "$claude_shape" | sed 's/^/        /')"
     fi
 done
 
+# Codex takes the prompt check too: same event, same block contract.
+fresh
+run codex
+if grep -qE "UserPromptSubmit.*secrets-guard" <<< "$(shape codex)"; then
+    ok "codex: wired UserPromptSubmit — the prompt check"
+else
+    no "codex: wired UserPromptSubmit" "not found in:
+$(shape codex | sed 's/^/        /')"
+fi
+fresh
+run claude
+
 # ── removal has to be complete, and reversible ──────────────────────────────
 run claude --remove
 left="$(shape claude)"

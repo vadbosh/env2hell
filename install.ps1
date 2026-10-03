@@ -400,13 +400,13 @@ function Update-FailureConfig ($Name, $Path, $RedactPath) {
     Say $(if ($DryRun) { '    would add failure hook' } else { '    failure hook added' })
 }
 
-# Claude Code's UserPromptSubmit: files the user attaches with `@path`. The
+# UserPromptSubmit in Claude Code and Codex: files the user attaches with `@path`. The
 # client reads an attached file itself and puts it in the conversation whole;
 # no tool runs, so neither the PreToolUse guard nor the redactor sees it. The
 # guard's prompt branch judges each attached path by name and by content and
 # blocks the prompt. No matcher: the event has no tool to match on.
 function Update-PromptConfig ($Name, $Path, $GuardPath) {
-    if ($Name -ne 'claude') { return }        # the event is Claude Code's
+    if ($Name -notin @('claude', 'codex')) { return }   # Opencode masks in its plugin instead
 
     $data = Read-Json $Path
     if (-not (Test-Property $data 'hooks')) {

@@ -324,11 +324,12 @@ now and finding out never.
   later command in the same call failed. That class closes one way: keep the
   credential out of the command's output. A deploy key or a credential helper
   instead of a token written into a remote URL.
-- **A file attached with `@` is checked only in Claude Code.** The client reads
-  it itself, so no tool hook sees it; env2hell blocks such a prompt in
+- **A file attached with `@` is read by the client, not by a tool**, so no tool
+  hook sees it. In Claude Code and Codex env2hell blocks such a prompt in
   `UserPromptSubmit` when the file is a credential store or holds a
-  credential-shaped value. Codex and Opencode attach without that check. The
-  prompt text, which names only the path, still reaches the transcript.
+  credential-shaped value; the prompt text, which names only the path, still
+  reaches the transcript. In Opencode the plugin masks the attached content in
+  `chat.message` instead.
 - The redactor needs a label. An unlabelled secret that looks like ordinary text
   — a passphrase of three English words, say — passes through untouched.
 - **A labelled value is also judged on its shape, and the shape has a floor.**

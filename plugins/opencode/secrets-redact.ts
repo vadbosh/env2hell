@@ -18,9 +18,10 @@ import type { Plugin } from "@opencode-ai/plugin"
 // masked text out, exit 0 when something changed. Requires `secrets-redact` in
 // PATH.
 //
-// Only `bash` is covered, matching the Claude Code hook's `Bash` matcher and
-// the guard above. A tool that reads a file is the guard's business; a tool
-// that runs a program is this one's.
+// Among tools only `bash` is covered, matching the Claude Code hook's `Bash`
+// matcher and the guard above. A tool that reads a file is the guard's
+// business; a tool that runs a program is this one's. Files attached to a
+// prompt with `@` are masked in chat.message, below.
 
 export const SecretsRedactPlugin: Plugin = async ({ $ }) => {
   // Same PATH trap as in secrets-guard.ts: a plugin shell does not read the
@@ -51,6 +52,24 @@ export const SecretsRedactPlugin: Plugin = async ({ $ }) => {
   }
 
   return {
+    // A file attached with `@path` in a prompt. Opencode reads it itself
+    // (session/prompt.ts calls the read tool's execute() directly, so no
+    // tool.execute.* hook fires) and adds the content to the user message as a
+    // `synthetic` text part. chat.message receives those parts after they are
+    // resolved and before the message is stored or sent, which is the one place
+    // the content can still be masked. Only synthetic parts: what the user typed
+    // is theirs to see. On 2026-10-03 a Telegram bot token reached a transcript
+    // through the same kind of attachment in Claude Code.
+    "chat.message": async (_input, output) => {
+      const parts = (output as { parts?: unknown })?.parts
+      if (!Array.isArray(parts)) return
+      for (const part of parts as Array<Record<string, unknown>>) {
+        if (part?.type !== "text" || part?.synthetic !== true) continue
+        const masked = await mask(part.text)
+        if (masked !== undefined) part.text = masked
+      }
+    },
+
     "tool.execute.after": async (input, output) => {
       const tool = String(input?.tool ?? "").toLowerCase()
       if (tool !== "bash") return
