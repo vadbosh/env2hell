@@ -38,7 +38,9 @@ fi
 say()  { printf '%s\n' "$*"; }
 ok()   { printf '%s%s%s\n' "$C_OK"   "$*" "$C_OFF"; }
 warn() { printf '%s%s%s\n' "$C_WARN" "$*" "$C_OFF"; }
-tilde() { printf '%s' "${1/#$HOME/\~}"; }
+# Not ${1/#$HOME/\~}: bash 3.2, the one macOS ships, keeps the backslash and
+# prints \~/.claude — measured in the bash:3.2 image.
+tilde() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
 remove_file() {
     local path="$1"

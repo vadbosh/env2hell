@@ -51,7 +51,9 @@ say()  { printf '%s\n' "$*"; }
 ok()   { printf '%s%s%s\n' "$C_OK"   "$*" "$C_OFF"; }
 warn() { printf '%s%s%s\n' "$C_WARN" "$*" "$C_OFF"; }
 bad()  { printf '%s%s%s\n' "$C_BAD"  "$*" "$C_OFF"; }
-tilde() { printf '%s' "${1/#$HOME/\~}"; }
+# Not ${1/#$HOME/\~}: bash 3.2, the one macOS ships, keeps the backslash and
+# prints \~/.claude — measured in the bash:3.2 image.
+tilde() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
 # Copy with a timestamped backup, skipping the copy when the content already
 # matches so that a re-run leaves no pile of identical .bak files.

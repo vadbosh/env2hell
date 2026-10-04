@@ -25,6 +25,11 @@
 #   ./release.sh check
 set -euo pipefail
 
+# Not ${1/#$HOME/\~}: bash 3.2, the one macOS ships, keeps the backslash and
+# prints \~/.claude — measured in the bash:3.2 image.
+tilde() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
+
+
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG="$SRC/CHANGELOG.md"
 
@@ -81,12 +86,12 @@ check_mirrors() {
 	while read -r f; do
 		[ -n "$f" ] || continue
 		if ! src="$(source_for "$f")"; then
-			echo "  mirror ignored:    ${f/#$HOME/\~} — no file of that name is shipped"
+			echo "  mirror ignored:    $(tilde "$f") — no file of that name is shipped"
 			unknown=$((unknown + 1))
 			continue
 		fi
 		if [ ! -e "$f" ]; then
-			echo "  mirror missing:    ${f/#$HOME/\~} — listed but not there"
+			echo "  mirror missing:    $(tilde "$f") — listed but not there"
 			behind=$((behind + 1))
 			continue
 		fi
@@ -94,7 +99,7 @@ check_mirrors() {
 		if ! cmp -s "$src" "$f"; then
 			[ "$behind" -eq 0 ] && echo "  mirrors behind:"
 			behind=$((behind + 1))
-			echo "    ${f/#$HOME/\~}  differs from ${src#"$SRC"/}"
+			echo "    $(tilde "$f")  differs from ${src#"$SRC"/}"
 		fi
 	done <<-EOF
 	$(printf '%s\n' "${ENV2HELL_MIRRORS:-}" | tr ':' '\n'; installed_mirrors)
