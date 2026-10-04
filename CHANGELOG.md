@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.4 — 2026-10-04
+
+### Fixed
+
+- **README.md, two places found by a docs-techwriter review:** "If the file will
+  not run" is "If the file does not run" (present tense for what the program
+  does), and the 63-word sentence about the SQL clause in 0.8.5 is four.
+
 ## 0.12.3 — 2026-10-04
 
 ### Fixed

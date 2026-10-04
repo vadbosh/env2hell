@@ -136,7 +136,7 @@ the same test suites as the POSIX originals, with `--pwsh`.
 .\install.ps1 -Ide claude
 ```
 
-If the file will not run, PowerShell's execution policy is blocking it:
+If the file does not run, PowerShell's execution policy is blocking it:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -366,10 +366,10 @@ The documentation itself is bilingual and stays that way: `README.md` and
 `README.RU.md`, `docs/*.en.md` and `docs/*.ru.md`, edited as pairs.
 
 **A pattern is not added without a test naming the shape, and the shapes that
-must not fire are tested too.** The SQL clause in 0.8.5 is the case that shows
-why: `safe-env` had carried that rule since the first commit while the redactor
-beside it had not, and nothing was going to notice — two implementations of one
-policy drift in silence, which is also why `tools/scan-transcripts` calls
+must not fire are tested too.** The SQL clause in 0.8.5 shows why. `safe-env`
+had carried that rule since the first commit, the redactor beside it had not,
+and nothing was going to notice. Two implementations of one policy drift apart
+in silence. For the same reason `tools/scan-transcripts` calls
 `secrets-redact --filter` instead of holding patterns of its own.
 
 ## Licence
