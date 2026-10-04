@@ -264,7 +264,7 @@ runs the real policy by calling the same `secrets-guard`, so there is one
 source of truth rather than two that drift.
 
 **The two matchers differ on purpose.** The guard inspects what a call is about
-to do: a command line, and since 0.10.0 the path a `Read` is about to open — a
+to do: a command line, and the path a `Read` is about to open — a
 known credential store is denied before it is read, the same list `cat` is
 judged by. It does not read the file for a `Read`, so a file of test keys stays
 editable. The redactor inspects a result, and a result carrying a credential

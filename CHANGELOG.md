@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.6 — 2026-10-04
+
+### Fixed
+
+- **Both READMEs: the guard inspects "a command line and the path a `Read` is
+  about to open"**, not "since 0.10.0 the path" — the version belongs here, not
+  in a description of what the guard does now.
+
 ## 0.12.5 — 2026-10-04
 
 ### Fixed
