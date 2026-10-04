@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.2 — 2026-10-04
+
+### Fixed
+
+- **A mask is not masked again.** A line that already carried `<REDACTED:N>`
+  — the hook reading its own earlier output, or a tool that masks before
+  printing (`ide-history`, the `--sum` digest of ide-sessions) — went through
+  tier 2 a second time when the marker sat in quotes after a label, or glued to
+  `mysql -p`. The new marker reported the length of the old marker instead of
+  the secret (a quoted 8-character mask came back as 12), and the hit made the
+  hook tell the model that a secret had been removed from text that held none.
+  `is_mask()` in `bin/secrets-redact` and `Test-Mask` in the PowerShell port
+  leave a marker as it is; three cases in tests/test_redact.sh, which fail on
+  0.12.1.
+
 ## 0.12.1 — 2026-10-03
 
 ### Fixed

@@ -180,6 +180,9 @@ function Test-KeepBare([string]$Value) {
 $script:Hits = 0
 
 function Get-Mask([string]$Value) { "<REDACTED:$($Value.Length)>" }
+# Already a mask: masked again it reported the length of the marker instead of
+# the secret, and counted as a hit. Same rule as is_mask() in the POSIX file.
+function Test-Mask([string]$Value) { $Value -match '^<REDACTED:[0-9]+>$' }
 
 # A credential glued to its flag, or after a colon in a user:password pair.
 # The labelled rule above needs a separator; these four client idioms have none,
@@ -202,6 +205,7 @@ function Edit-Glued([string]$Line) {
         if (-not $rule.Cmd.IsMatch($Line)) { continue }
         $Line = $rule.Pat.Replace($Line, {
             param($m)
+            if (Test-Mask $m.Groups['val'].Value) { return $m.Value }
             $script:Hits++
             $m.Groups['head'].Value + (Get-Mask $m.Groups['val'].Value)
         })
@@ -229,7 +233,7 @@ function Edit-Line([string]$Line) {
             }
             # A quoted value only has to clear Test-Name; an unquoted one is
             # also judged on length and composition.
-            $keep = if ($q) { Test-Name $v } else { Test-KeepBare $v }
+            $keep = if ($q) { (Test-Name $v) -or (Test-Mask $v) } else { Test-KeepBare $v }
             if ($keep) { return $m.Value }            # a name, not a value
             $script:Hits++
             $m.Groups['head'].Value + $q + (Get-Mask $v) + $q

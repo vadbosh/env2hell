@@ -163,6 +163,21 @@ check_labelled "--token $HEX"   '--token'
 check_labelled "--PASS $HEX"    '--PASS'
 check_labelled "api_key=$HEX"   'api_key='
 
+# A line that already carries a mask: the hook reading its own earlier output,
+# or a tool that masked before printing. Masked again, the marker reported its
+# own length instead of the secret's, and the hit told the model a secret had
+# been removed from text that held none. Measured 2026-10-04: a quoted
+# 8-character mask came back as a 12-character one, in a JSON body.
+for line in '{"password":"<REDACTED:8>"}' "password='<REDACTED:13>'" \
+            'mysql -uroot -p<REDACTED:11> -h db'; do
+    out="$(printf '%s\n' "$line" | run_tool --filter 2>/dev/null)"; rc=$?
+    if [ "$out" = "$line" ] && [ "$rc" = 1 ]; then
+        ok "a mask is not masked again: ${line%%<*}…"
+    else
+        no "a mask is not masked again: ${line%%<*}…" "exit $rc, got: $out"
+    fi
+done
+
 # A Telegram bot token is `<bot id>:AA<33 characters>`. Tier 2 cannot take it:
 # VALUE stops at the colon, which leaves 8-10 digits under the floor, so the
 # token went through even as TELEGRAM_BOT_TOKEN=… — on 2026-10-03 one reached a
