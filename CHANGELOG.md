@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.3 — 2026-10-04
+
+### Fixed
+
+- **README.RU.md:** «Read судится по пути», a calque of *is judged by path*
+  («судиться» is to go to court), is «для Read решает путь». Found by a
+  docs-techwriter review of the Russian READMEs.
+
 ## 0.12.2 — 2026-10-04
 
 ### Fixed

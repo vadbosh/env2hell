@@ -256,7 +256,7 @@ credential by design. --include-stores to scan them too.
 
 | Ассистент | Механизм |
 |---|---|
-| Claude Code | Хук `PreToolUse`, шаблон `Bash\|Read`, в `settings.json` — Read судится по пути |
+| Claude Code | Хук `PreToolUse`, шаблон `Bash\|Read`, в `settings.json` — для Read решает путь |
 | Claude Code | Хук `PostToolUse`, шаблон `Bash\|Read\|Grep`, в `settings.json` — это `secrets-redact` |
 | Windows | те же два хука, с `"shell": "powershell"`, указывают на порты `.ps1` |
 | Codex | Хук `PreToolUse`, шаблон `^Bash$`, в `hooks.json` |
