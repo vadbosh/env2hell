@@ -148,10 +148,16 @@ A bare word followed only by a space is not a label. `ok  pass  NAME`,
 not assignments. A space separates a value only after a flag (`--pass X`,
 `-token X`) or in SQL (`IDENTIFIED BY`); a bare word needs `=` or `:`.
 
-The value itself must still look like a secret: 16 or more characters from
-`A-Za-z0-9+/=_.~-`. Sixteen, not thirty-two, because the label has already done
-most of the work — an md5 is 32 and a git SHA is 40, so length on its own can
-never decide this question.
+The value itself must still look like a secret. A value of 16 or more
+characters from `A-Za-z0-9+/=_.~-` is masked. Sixteen, not thirty-two: the label
+has already done most of the work. An md5 is 32 characters and a git SHA is 40,
+so length on its own can never decide this question.
+
+A shorter value, from 8 to 15 characters, is masked only when it has a
+lower-case letter, an upper-case letter and a digit. A generated password looks
+like that, and ordinary text does not. So `password: Tr0ub4dor` is masked, and
+`token: deploy_v2` stays readable. A quoted value needs only 8 characters,
+because the quotes already mark where it ends.
 
 YAML can put the label one line above the value. A credential block names the
 secret in its key, and each value sits under a user name:

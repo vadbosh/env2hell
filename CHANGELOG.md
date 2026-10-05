@@ -15,6 +15,11 @@
   docs/patterns.*.md. Five cases in tests/test_redact.sh cover a masked block,
   a list item, a password policy, an endpoint URL and a sibling after the
   block. All values in them are assembled at run time.
+- **docs/patterns.*.md describe the short-value rule.** Since 0.9.0 a labelled
+  value of 8 to 15 characters is masked when it has a lower-case letter, an
+  upper-case letter and a digit, and a quoted value needs only 8 characters.
+  The docs still said "16 or more characters". The 34-word sentence beside it
+  is now four.
 
 ## 0.12.6 — 2026-10-04
 
