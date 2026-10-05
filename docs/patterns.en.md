@@ -153,6 +153,22 @@ The value itself must still look like a secret: 16 or more characters from
 most of the work — an md5 is 32 and a git SHA is 40, so length on its own can
 never decide this question.
 
+YAML can put the label one line above the value. A credential block names the
+secret in its key, and each value sits under a user name:
+
+```yaml
+userpass:
+  alice: <REDACTED:32>
+  bob: <REDACTED:32>
+```
+
+No line under `userpass:` carries a label, so the redactor reads the block as a
+whole. A key that contains a label and holds no value of its own opens the
+block. Every deeper line is a child, and a blank line keeps the block open. The
+first line at the parent's indent or shallower closes it. A child value is
+decided by the same rules as a labelled value on one line. So `min_length: 12`
+under `password:` stays readable, and so does a URL.
+
 ## Testing a format
 
 Never paste a live key to check. Construct one of the same shape:

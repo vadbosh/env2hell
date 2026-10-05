@@ -263,6 +263,45 @@ $KeyBody = [regex]::new(
     '(?<=^-+BEGIN [A-Z0-9 ]*PRIVATE KEY-+\r?$\n)(?s:.*?)(?=^-+END [A-Z0-9 ]*PRIVATE KEY)',
     'Multiline')
 
+# A credential block in YAML puts the label on the parent line and the values
+# under it, keyed by something that is not a label -- `userpass:` and then
+# `bosh: <32 characters>`. Measured 2026-10-05: a Hysteria2 config.yaml printed
+# over ssh put three passwords into a transcript that way. Same rule as
+# scrub_child() in the POSIX file: the parent sets the indent, `\k<ind>[ \t]+`
+# admits only deeper lines and blank ones, and each child value is decided by
+# the tier 2 rules. Runs after Edit-Line, so a child already masked there is
+# seen as a mask -- the POSIX file has the same order.
+$CredBlock = [regex]::new(
+    '^(?<ind>[ \t]*)(?:-[ \t]+)?["'']?[A-Za-z0-9_.-]*' + $Label +
+    '[A-Za-z0-9_.-]*["'']?[ \t]*:[ \t]*(?:#[^\n]*)?\r?\n' +
+    '(?<body>(?:(?:\k<ind>[ \t]+[^\n]*|[ \t\r]*)\n)*(?:\k<ind>[ \t]+[^\n]*)?)',
+    'Multiline, IgnoreCase')
+$ChildKeyed = [regex]::new('^[ \t]*(?:-[ \t]+)?(?:[^ \t:#"'']+|"[^"]*"|''[^'']*'')[ \t]*:[ \t]+')
+$ChildItem  = [regex]::new('^[ \t]*-[ \t]+')
+
+function Edit-Child([string]$Line) {
+    $m = $ChildKeyed.Match($Line)
+    if (-not $m.Success) { $m = $ChildItem.Match($Line) }
+    if (-not $m.Success) { return $Line }
+    $head = $m.Value
+    $rest = $Line.Substring($m.Length)
+    if ($rest.Length -gt 0 -and ($rest[0] -eq '"' -or $rest[0] -eq "'")) {
+        $q = [string]$rest[0]
+        $end = $rest.IndexOf($q, 1)
+        if ($end -lt 0) { return $Line }
+        $v = $rest.Substring(1, $end - 1)
+        if ($v.Length -lt 8 -or (Test-Name $v) -or (Test-Mask $v)) { return $Line }
+        $script:Hits++
+        return $head + $q + (Get-Mask $v) + $q + $rest.Substring($end + 1)
+    }
+    $t = [regex]::Match($rest, '^[^ \t\r]+')
+    if (-not $t.Success) { return $Line }
+    $v = $t.Value
+    if ($v.Length -lt 8 -or (Test-Mask $v) -or $v.Contains('://') -or (Test-KeepBare $v)) { return $Line }
+    $script:Hits++
+    return $head + (Get-Mask $v) + $rest.Substring($t.Length)
+}
+
 function Edit-Text([string]$Text) {
     if ($Text -eq '') { return $Text }
     $out = $KeyBody.Replace($Text, {
@@ -271,7 +310,13 @@ function Edit-Text([string]$Text) {
             if ($_ -eq '') { $_ } else { $script:Hits++; Get-Mask $_ }
         }) -join "`n"
     })
-    return (Edit-Line $out)
+    $out = Edit-Line $out
+    return $CredBlock.Replace($out, {
+        param($m)
+        $body = $m.Groups['body']
+        $lines = $body.Value.Split([char]10) | ForEach-Object { Edit-Child $_ }
+        $m.Value.Substring(0, $body.Index - $m.Index) + ($lines -join "`n")
+    })
 }
 
 function Read-Stdin { $input_ = [Console]::In.ReadToEnd(); return $input_ }

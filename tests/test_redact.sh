@@ -396,6 +396,36 @@ else
 $(printf '%s\n' "$prose" | sed 's/^/        /')"
 fi
 
+# A credential block in YAML: the label is on the parent line, and the values
+# under it are keyed by user names. Measured 2026-10-05: a Hysteria2
+# config.yaml printed over ssh put three passwords into a transcript, every line
+# of them `name: value` with no label anywhere on it. Built at run time, like
+# every other value here, so this file holds nothing a scanner would flag.
+YPW="Xy7$(printf 'k%.0s' {1..10})Q-_9Zr$(printf 'm%.0s' {1..12})"
+yaml="$(printf '%s\n' 'auth:' '  type: userpass' '  userpass:' \
+                      "    bosh: $YPW" "    \"set\": '$YPW'" '' "    test: $YPW # spare" |
+        run_tool --filter 2>/dev/null)"
+if grep -qF "$YPW" <<< "$yaml"; then
+    no "masks the values of a YAML credential block" "a raw value reached the output"
+elif ! grep -qF '    bosh: <REDACTED:' <<< "$yaml" ||
+     ! grep -qF "    \"set\": '<REDACTED:" <<< "$yaml" ||
+     ! grep -qF '# spare' <<< "$yaml"; then
+    no "masks the values of a YAML credential block" "the keys, quotes or comment did not survive:
+$(printf '%s\n' "$yaml" | sed 's/^/        /')"
+else
+    ok "masks the values of a YAML credential block, keeping the keys"
+fi
+
+check_shape mask "$(printf 'tokens:\n  - %s' "$YPW")"            'a list item under a credential key'
+check_shape keep "$(printf 'password:\n  min_length: 12\n  require_digit: true')" \
+                                                                 'a password policy, not a password'
+check_shape keep "$(printf 'secrets:\n  url: https://vault.example.com/v1/kv/data/app')" \
+                                                                 'an endpoint under a credential key'
+# The block ends at the first line as shallow as its parent. `other:` is a
+# sibling of `userpass:`, not a child, and an unlabelled sibling stays as it is.
+check_shape keep "$(printf 'auth:\n  userpass:\n    bosh: short\n  other: %s' "$YPW")" \
+                                                                 'a sibling after the block'
+
 # ── what a killed run leaves behind ─────────────────────────────────────────
 # A SIGKILL runs no trap, and the harness kills this hook exactly when it is
 # slow, so a killed run used to leave its whole payload in /tmp for good — 74 MB

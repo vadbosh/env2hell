@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.0 — 2026-10-05
+
+### Fixed
+
+- **Values inside a YAML credential block are masked.** In a block such as
+  `userpass:`, the label is on the parent line and each value sits under a
+  user name, so no line of it carries a label. On 2026-10-05 a Hysteria2
+  config.yaml, printed over ssh, put three passwords into a session transcript
+  that way. A key that contains a label and holds no value now opens a block.
+  Each deeper line is a child, and its value is decided by the tier 2 rules.
+  The first line at the parent's indent or shallower closes the block. The rule
+  is in bin/secrets-redact and bin/secrets-redact.ps1, with a paragraph in
+  docs/patterns.*.md. Five cases in tests/test_redact.sh cover a masked block,
+  a list item, a password policy, an endpoint URL and a sibling after the
+  block. All values in them are assembled at run time.
+
 ## 0.12.6 — 2026-10-04
 
 ### Fixed
