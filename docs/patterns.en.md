@@ -182,7 +182,8 @@ characters with a lower-case letter, an upper-case letter and a digit. Besides
 letters and digits it may hold only `!@#$%^&*()_+=?~.,;:-`. Ordinary output also
 prints some things alone on a line, and they stay readable. These are a flag, a
 path, a hash, a date, an assignment, a heading and a file name as `grep -n`
-prints it. A password without one of the three classes, such as lower-case
+prints it. A backup name with its timestamp, such as
+`SKILL.md.bak.20261001-191831`, stays readable too. A password without one of the three classes, such as lower-case
 letters and digits only, is not caught. That shape is every hash and every
 generated id.
 

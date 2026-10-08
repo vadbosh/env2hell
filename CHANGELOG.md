@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.4 — 2026-10-08
+
+### Fixed
+
+- **A backup name with its timestamp is no longer masked.**
+  `history-SKILL.md.bak.20261001-191831` alone on a line came out as
+  `<REDACTED:36>` in `ls` output: it has a lower-case letter, an upper-case
+  letter and a digit, and the file-name exception wanted a letter after the
+  last dot. A name whose extension is followed by a numeric stamp now stays
+  readable, in both ports.
+
 ## 0.13.3 — 2026-10-08
 
 ### Fixed

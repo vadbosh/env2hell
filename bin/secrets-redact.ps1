@@ -324,6 +324,7 @@ function Edit-Bare([string]$Text) {
             ($v -match '^[-#~.]') -or ($v -cmatch '^[0-9a-f]+$') -or ($v -match '^[0-9.:,-]+$') -or
             ($v -match '^[A-Za-z_][A-Za-z0-9_.-]*=') -or $v.EndsWith(':') -or ($v -match '\([0-9]+\)$') -or
             ($v -match '\.[A-Za-z][A-Za-z0-9]{0,5}([-:][0-9]+)*[-:]?$') -or
+            ($v -match '\.[A-Za-z][A-Za-z0-9]*\.[0-9]+([-_][0-9]+)*$') -or
             (Test-Name $v) -or (Test-Mask $v)
         if ($keep) { return $m.Value }
         $script:Hits++

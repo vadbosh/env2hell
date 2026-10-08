@@ -452,6 +452,7 @@ check_shape mask "$(printf %s%s Pa55 word)"              "an 8-character passwor
 check_shape mask "$(printf %s%s Xk9.Lm2, "Qp7;Rt")"      "a password with . , and ;"
 check_shape keep "README.md:12"                    "a file name as grep -n prints it"
 check_shape keep "README.ru.md-12-"                "a file name as grep -A prints it"
+check_shape keep "history-SKILL.md.bak.20261001-191831" "a backup name with its timestamp"
 check_shape keep "Section2:"                       "a heading"
 check_shape keep "ls(1)"                           "a manual reference"
 check_shape keep "NAME=Val9ue"                     "an assignment, decided by the labelled rule"
