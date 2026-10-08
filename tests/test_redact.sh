@@ -106,10 +106,14 @@ HEX='deadbeefdeadbeefdeadbeefdeadbeef'
 SHA='feedfacefeedfacefeedfacefeedfacefeedface'
 GHP='ghp_0123456789abcdefghijklmnopqrstuvwxyzAB'
 
-# hook_out <stdout-json-string> — run the hook, print the replacement stdout.
+# hook_out <stdout> — run the hook, print the replacement stdout.
 # Prints nothing when the hook declines to replace anything.
+# jq builds the payload: pasted into JSON by printf, a quote in the line made it
+# invalid, the hook failed open with empty output, and a "the secret is not in
+# the output" check passed on nothing (F151). A newline is a real one, $'\n'.
 hook_out () {
-    printf '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_response":{"stdout":"%s","stderr":"","interrupted":false,"isImage":false}}' "$1" |
+    jq -nc --arg s "$1" '{hook_event_name: "PostToolUse", tool_name: "Bash",
+        tool_response: {stdout: $s, stderr: "", interrupted: false, isImage: false}}' |
         run_tool | jq -j 'try (.hookSpecificOutput.updatedToolOutput.stdout // empty)'
 }
 
@@ -346,8 +350,7 @@ check_shape mask "\"Authorization\": \"Bearer $BEARER\""         'a bearer token
 check_shape keep '"Authorization": "Bearer ..."'                 'a JSON placeholder after the scheme'
 check_shape keep '"Authorization": "Bearer <token>"'             'the same, in angle brackets'
 
-# Through --filter: hook_out puts the line into JSON unescaped, and quotes break it.
-got="$(printf '%s\n' "\"Authorization\": \"Bearer $BEARER\"" | run_tool --filter)"
+got="$(hook_out "\"Authorization\": \"Bearer $BEARER\"")"
 if grep -qF -- '"Authorization": "Bearer <REDACTED:' <<< "$got"; then
     ok "keeps the scheme word readable inside JSON quotes"
 else
@@ -675,7 +678,7 @@ else
 fi
 
 # ── it must not reformat what it passes through ─────────────────────────────
-with_nl="$(hook_out "--pass $HEX\n" | od -An -c | tr -s ' ' | tail -c 4)"
+with_nl="$(hook_out "--pass $HEX"$'\n' | od -An -c | tr -s ' ' | tail -c 4)"
 if [ "$with_nl" = '\n
 ' ] || grep 'n' <<< "$with_nl" >/dev/null; then
     ok "keeps a trailing newline that was there"
@@ -690,7 +693,7 @@ else
     no "adds no trailing newline that was not there" "awk's print leaked through"
 fi
 
-multi="$(hook_out "first\n\n--pass $HEX")"
+multi="$(hook_out "first"$'\n\n'"--pass $HEX")"
 if [ "$multi" = "$(printf 'first\n\n--pass <REDACTED:32>')" ]; then
     ok "preserves interior blank lines"
 else
