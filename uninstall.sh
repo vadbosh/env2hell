@@ -6,9 +6,10 @@
 #   ./uninstall.sh --ide claude remove from one assistant only
 #   ./uninstall.sh --keep-bin   unwire the assistants, leave the commands in place
 #
-# The backups made at install time are left in place: they are the only copy of
-# whatever the configuration held before, and deleting them here would defeat
-# the point of making them.
+# The backups made at install time are left in place, in
+# ~/.local/state/env2hell-backups: they are the only copy of whatever the
+# configuration held before, and deleting them here would defeat the point of
+# making them.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,5 +104,5 @@ if [ "$DRY_RUN" -eq 1 ]; then
     warn "dry run — nothing was removed"
 else
     ok "removed. Restart your assistant for it to stop calling the guard."
-    warn "Backups (.bak.*) were left in place."
+    warn "Backups were left in place: ${ENV2HELL_BACKUP_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/env2hell-backups}"
 fi

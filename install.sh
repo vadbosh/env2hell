@@ -16,14 +16,21 @@
 #   ./install.sh --bin-dir D      put the commands in D instead of ~/.local/bin
 #   ./install.sh --no-rule        skip the documentation rule, wire the guard only
 #
-# Idempotent: re-running rewrites only what differs. A configuration file about
-# to change is copied to <file>.bak.<timestamp> first. Nothing outside $HOME is
-# touched.
+# Idempotent: re-running rewrites only what differs. A file about to change is
+# copied first to ~/.local/state/env2hell-backups (ENV2HELL_BACKUP_DIR, or
+# $XDG_STATE_HOME/env2hell-backups), and the three newest copies of each are
+# kept. Nothing outside $HOME is touched.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${ENV2HELL_BIN_DIR:-$HOME/.local/bin}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
+# Never beside the file. A copy beside its original sits in a directory that
+# something reads as live: ~/.local/bin is on PATH, and Opencode loads every
+# plugin in plugins/ -- an old secrets-redact.ts.bak was found there.
+# lib/patch_config.py reads the same variables for the configuration files.
+BACKUP_DIR="${ENV2HELL_BACKUP_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/env2hell-backups}"
+BACKUPS_KEPT=3
 
 DRY_RUN=0
 WITH_RULE=1
@@ -55,8 +62,28 @@ bad()  { printf '%s%s%s\n' "$C_BAD"  "$*" "$C_OFF"; }
 # prints \~/.claude — measured in the bash:3.2 image.
 tilde() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
+# Copy dst into BACKUP_DIR under its path below $HOME with / turned into _, so
+# ~/.local/bin/secrets-redact becomes .local_bin_secrets-redact.bak.<stamp>.
+# The names carry %Y%m%d-%H%M%S, so sorting them as text sorts them by age.
+backup_file() {
+    local dst="$1" name old n=0
+    name="${dst#"$HOME"/}"
+    name="${name//\//_}"
+    mkdir -p "$BACKUP_DIR"
+    chmod 700 "$BACKUP_DIR"
+    cp -p "$dst" "$BACKUP_DIR/$name.bak.$STAMP"
+    # The copy just made guarantees the glob matches at least one file.
+    printf '%s\n' "$BACKUP_DIR/$name".bak.* | sort -r | while IFS= read -r old; do
+        n=$((n + 1))
+        # An `if`, not `[ ] && rm`: under set -e and pipefail a false test as
+        # the last command of the loop ends the whole installer.
+        if [ "$n" -gt "$BACKUPS_KEPT" ]; then rm -f "$old"; fi
+    done
+    return 0
+}
+
 # Copy with a timestamped backup, skipping the copy when the content already
-# matches so that a re-run leaves no pile of identical .bak files.
+# matches so that a re-run leaves no pile of identical copies.
 install_file() {
     local src="$1" dst="$2" mode="${3:-644}"
     if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
@@ -69,8 +96,8 @@ install_file() {
     fi
     mkdir -p "$(dirname "$dst")"
     if [ -f "$dst" ]; then
-        cp -p "$dst" "$dst.bak.$STAMP"
-        say "    ~ $(tilde "$dst")  (backup .bak.$STAMP)"
+        backup_file "$dst"
+        say "    ~ $(tilde "$dst")  (backup in $(tilde "$BACKUP_DIR"))"
     else
         say "    + $(tilde "$dst")"
     fi

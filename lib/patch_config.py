@@ -29,7 +29,8 @@ the plugin runs the real policy. The permission rules are still worth having
 because they deny the common spellings before a plugin is even loaded.
 
 Idempotent: an entry that is already present is left alone. A file that is
-about to change is copied to <file>.bak.<timestamp> first, keeps its own mode,
+about to change is copied first to ~/.local/state/env2hell-backups (see
+backup_dir()) as <path under $HOME, / as _>.bak.<timestamp>, keeps its own mode,
 and — when it is a symlink — is edited through the link rather than replaced.
 
 Usage:
@@ -95,6 +96,25 @@ GUARD_TIMEOUT = 30
 # found in one live ~/.claude, each carrying whatever the `env` block holds.
 # Three is enough to undo a bad install and small enough not to be a pile.
 BACKUPS_KEPT = 3
+
+
+def backup_dir() -> str:
+    """Where backups go: never beside the file, which may sit in a directory an
+    assistant reads as live. install.sh resolves the same variables the same way."""
+    explicit = os.environ.get("ENV2HELL_BACKUP_DIR")
+    if explicit:
+        return explicit
+    state = os.environ.get("XDG_STATE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "state")
+    return os.path.join(state, "env2hell-backups")
+
+
+def backup_base(path: str) -> str:
+    """The backup path of `path` without its .bak.<stamp> suffix: its path under
+    $HOME with / turned into _, the name install.sh gives its own copies."""
+    home = os.path.expanduser("~").rstrip(os.sep) + os.sep
+    rel = path[len(home):] if path.startswith(home) else path.lstrip(os.sep)
+    return os.path.join(backup_dir(), rel.replace(os.sep, "_"))
 
 def _opencode_config() -> str:
     """Whichever config file Opencode reads here, in the order it reads them.
@@ -339,9 +359,12 @@ def save(path: str, data, dry_run: bool) -> None:
         indent = detect_indent(fh.read())
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    shutil.copy2(path, f"{path}.bak.{stamp}")
+    base = backup_base(path)
+    os.makedirs(os.path.dirname(base), exist_ok=True)
+    os.chmod(os.path.dirname(base), 0o700)   # the copies hold the `env` block
+    shutil.copy2(path, f"{base}.bak.{stamp}")
     # The names carry %Y%m%d-%H%M%S, so sorting them as text sorts them by age.
-    for stale in sorted(glob.glob(f"{path}.bak.*"), reverse=True)[BACKUPS_KEPT:]:
+    for stale in sorted(glob.glob(f"{glob.escape(base)}.bak.*"), reverse=True)[BACKUPS_KEPT:]:
         os.unlink(stale)
 
     # A process killed with SIGKILL runs no `finally`, so the sweep is what

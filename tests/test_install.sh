@@ -27,6 +27,9 @@ no () { fail=$((fail + 1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
 tmp="$(mktemp -d)" || exit 2
 trap 'rm -rf "$tmp"' EXIT
+# Backups go to $XDG_STATE_HOME or ENV2HELL_BACKUP_DIR when set. Unset, they
+# land under the fake $HOME of each case and never in this machine's own.
+unset XDG_STATE_HOME ENV2HELL_BACKUP_DIR
 
 GUARD=/opt/env2hell/secrets-guard
 REDACT=/opt/env2hell/secrets-redact
@@ -275,18 +278,30 @@ fi
 
 fresh
 printf '{}\n' > "$tmp/home/.claude/settings.json"
+bk="$tmp/home/.local/state/env2hell-backups"
+mkdir -p "$bk"
 for stamp in 20260901-120000 20260902-120000 20260903-120000 20260904-120000; do
-    cp "$tmp/home/.claude/settings.json" "$tmp/home/.claude/settings.json.bak.$stamp"
+    cp "$tmp/home/.claude/settings.json" "$bk/.claude_settings.json.bak.$stamp"
 done
 run claude
-kept="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.*' | wc -l)"
-newest_gone="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.20260904-120000' | wc -l)"
-oldest_gone="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.20260901-120000' | wc -l)"
+kept="$(find "$bk" -maxdepth 1 -name '.claude_settings.json.bak.*' | wc -l)"
+newest_gone="$(find "$bk" -maxdepth 1 -name '.claude_settings.json.bak.20260904-120000' | wc -l)"
+oldest_gone="$(find "$bk" -maxdepth 1 -name '.claude_settings.json.bak.20260901-120000' | wc -l)"
 if [ "$kept" -eq 3 ] && [ "$newest_gone" -eq 1 ] && [ "$oldest_gone" -eq 0 ]; then
     ok "claude: three backups are kept and the oldest go"
 else
     no "claude: three backups are kept and the oldest go" \
        "$kept left; newest present=$newest_gone oldest present=$oldest_gone"
+fi
+# Not beside the file: a copy next to it sits in a directory an assistant may
+# read as live. Reported 2026-10-08 for an old plugin left in plugins/.
+beside="$(find "$tmp/home/.claude" -maxdepth 1 -name 'settings.json.bak.*' | wc -l)"
+mode="$(stat -c %a "$bk" 2>/dev/null || stat -f %Lp "$bk")"
+if [ "$beside" -eq 0 ] && [ "$mode" = 700 ]; then
+    ok "claude: the backup is not beside settings.json, and its directory is 700"
+else
+    no "claude: the backup is not beside settings.json, and its directory is 700" \
+       "$beside beside it; directory mode $mode"
 fi
 
 # The indent is read from the file, not imposed on it. A configuration written
@@ -813,6 +828,45 @@ else
     no "install.sh: the whole thing lands" "got [$installed]"
 fi
 
+# A second run over changed copies backs them up -- into the backup directory,
+# never beside them. Beside them they sat on PATH and in plugins/, which
+# Opencode loads: an old secrets-redact.ts.bak was found there on 2026-10-08.
+sh_bk="$sh_home/.local/state/env2hell-backups"
+printf '# changed\n' >> "$sh_home/bin/secrets-redact"
+for p in "$sh_home"/.config/opencode/plugins/*.ts; do printf '// changed\n' >> "$p"; done
+HOME="$sh_home" ENV2HELL_BIN_DIR="$sh_home/bin" \
+    bash "$SRC/install.sh" >"$tmp/sh-install2.out" 2>&1 || true
+beside="$(find "$sh_home/bin" "$sh_home/.config/opencode/plugins" -name '*.bak.*' | wc -l)"
+backed="$(find "$sh_bk" -maxdepth 1 \( -name 'bin_secrets-redact.bak.*' \
+    -o -name '.config_opencode_plugins_secrets-redact.ts.bak.*' \) | wc -l)"
+if [ "$beside" -eq 0 ] && [ "$backed" -eq 2 ]; then
+    ok "install.sh: a changed command and plugin are backed up outside PATH and plugins/"
+else
+    no "install.sh: a changed command and plugin are backed up outside PATH and plugins/" \
+       "$beside beside them; $backed in $sh_bk"
+fi
+
+# Three copies of each are kept, the same rule as the configuration files. The
+# pruning loop once ended the whole installer under set -e; this case runs it.
+for stamp in 20260901-120000 20260902-120000 20260903-120000 20260904-120000; do
+    cp "$sh_home/bin/safe-env" "$sh_bk/bin_safe-env.bak.$stamp"
+done
+printf '# changed\n' >> "$sh_home/bin/safe-env"
+if HOME="$sh_home" ENV2HELL_BIN_DIR="$sh_home/bin" \
+       bash "$SRC/install.sh" >"$tmp/sh-install3.out" 2>&1; then
+    kept="$(find "$sh_bk" -maxdepth 1 -name 'bin_safe-env.bak.*' | wc -l)"
+    oldest="$(find "$sh_bk" -maxdepth 1 -name 'bin_safe-env.bak.2026090[12]-*' | wc -l)"
+    if [ "$kept" -eq 3 ] && [ "$oldest" -eq 0 ]; then
+        ok "install.sh: three copies of a command are kept and the oldest go"
+    else
+        no "install.sh: three copies of a command are kept and the oldest go" \
+           "$kept kept; $oldest of the two oldest left"
+    fi
+else
+    no "install.sh: three copies of a command are kept and the oldest go" \
+       "install.sh failed: $(tail -3 "$tmp/sh-install3.out")"
+fi
+
 if HOME="$sh_home" ENV2HELL_BIN_DIR="$sh_home/bin" \
        bash "$SRC/uninstall.sh" >"$tmp/sh-uninstall.out" 2>&1; then
     ok "uninstall.sh: a run over an installed home finishes"
@@ -830,7 +884,7 @@ fi
 
 # The backups are the only copy of what the configuration held before, so the
 # uninstaller says out loud that it leaves them — and it has to be true.
-baks="$(find "$sh_home/.claude" -maxdepth 1 -name 'settings.json.bak.*' | wc -l)"
+baks="$(find "$sh_bk" -maxdepth 1 -name '.claude_settings.json.bak.*' | wc -l)"
 if [ "$baks" -ge 1 ]; then
     ok "uninstall.sh: the backups are left in place ($baks)"
 else

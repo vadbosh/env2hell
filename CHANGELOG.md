@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.2 — 2026-10-08
+
+### Fixed
+
+- **Backups are no longer left next to the files they copy.** The installers
+  copied each file about to change to `<file>.bak.<timestamp>` in the same
+  directory. In `~/.local/bin` that put an old, executable secrets-redact on
+  `PATH`. In `~/.config/opencode/plugins/` it left an old plugin where Opencode
+  loads plugins from. One machine had 13 such copies. Copies now go to
+  `~/.local/state/env2hell-backups`, or `$XDG_STATE_HOME/env2hell-backups`,
+  or `%LOCALAPPDATA%\env2hell-backups` on Windows. `ENV2HELL_BACKUP_DIR`
+  overrides all three. A copy is named after its path below the home
+  directory, with `/` turned into `_`. The three newest copies of each file are
+  kept, as the configuration files already were. The directory is mode 700,
+  because a copy of settings.json holds its `env` block. The change is in
+  install.sh, install.ps1 and lib/patch_config.py, and uninstall.sh names the
+  directory it leaves. tests/test_install.sh checks the new place, the mode,
+  a changed command and plugin, and the pruning of a command's copies.
+
 ## 0.13.1 — 2026-10-08
 
 ### Fixed

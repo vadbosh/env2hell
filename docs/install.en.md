@@ -18,9 +18,13 @@ Nothing outside your home directory. Concretely:
 Only assistants that already exist are written to. Creating a configuration
 tree for an assistant you do not use would just litter your home directory.
 
-Every file about to change is copied to `<file>.bak.<timestamp>` first. Running
-the installer twice is a no-op: content that already matches is skipped, so you
-do not accumulate identical backups.
+Every file about to change is copied first to
+`~/.local/state/env2hell-backups` (`%LOCALAPPDATA%\env2hell-backups` on
+Windows). Set `ENV2HELL_BACKUP_DIR` to use another directory. The three newest
+copies of each file are kept. A copy is never left next to its file. There it
+would sit on `PATH`, or in the `plugins/` directory that Opencode loads plugins
+from. Running the installer twice is a no-op: content that already
+matches is skipped, so you do not accumulate identical backups.
 
 ## Choosing what gets installed
 

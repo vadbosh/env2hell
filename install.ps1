@@ -11,8 +11,9 @@
     "shell": "powershell" so it runs without a POSIX shell present. Opencode
     takes a plugin plus a set of permission rules.
 
-    Idempotent: a configuration file about to change is copied to
-    <file>.bak.<timestamp> first, and re-running rewrites only what differs.
+    Idempotent: a file about to change is copied first to
+    %LOCALAPPDATA%\env2hell-backups (or ENV2HELL_BACKUP_DIR), the three newest
+    copies of each are kept, and re-running rewrites only what differs.
 
     Run one installer at a time. Each configuration is written in place, not
     through a temporary file, so two installers running together can leave one
@@ -51,6 +52,12 @@ $ErrorActionPreference = 'Stop'
 $Src   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Home_ = $env:USERPROFILE
 $Stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+# Never beside the file: Opencode loads every plugin in plugins\, and a copy
+# there is read as live -- an old secrets-redact.ts.bak was found there.
+# install.sh keeps its copies the same way, under ~/.local/state.
+$BackupDir   = if ($env:ENV2HELL_BACKUP_DIR) { $env:ENV2HELL_BACKUP_DIR } `
+               else { Join-Path $env:LOCALAPPDATA 'env2hell-backups' }
+$BackupsKept = 3
 
 function Say  ($m) { Write-Host $m }
 function Ok   ($m) { Write-Host $m -ForegroundColor Green }
@@ -60,9 +67,25 @@ function Bad  ($m) { Write-Host $m -ForegroundColor Red }
 # ConvertTo-Json stops at depth 2 unless told otherwise, which silently turns
 # nested configuration into the string "System.Object[]". Always pass -Depth.
 function Read-Json ($Path)          { Get-Content -Raw -Encoding UTF8 $Path | ConvertFrom-Json }
+
+# Copy $Path into $BackupDir under its path below the profile with \ turned
+# into _, so ...\.config\opencode\plugins\secrets-redact.ts becomes
+# .config_opencode_plugins_secrets-redact.ts.bak.<stamp>. The stamp sorts by age.
+function Backup-File ($Path) {
+    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $rel  = if ($full.StartsWith("$Home_\", [StringComparison]::OrdinalIgnoreCase)) {
+                $full.Substring($Home_.Length + 1) } else { $full -replace '^[A-Za-z]:\\', '' }
+    $name = $rel -replace '[\\/]', '_'
+    Copy-Item $Path (Join-Path $BackupDir "$name.bak.$Stamp") -Force
+    Get-ChildItem -LiteralPath $BackupDir -Filter "$name.bak.*" |
+        Sort-Object Name -Descending | Select-Object -Skip $BackupsKept |
+        Remove-Item -Force
+}
+
 function Write-Json ($Path, $Data) {
     if ($DryRun) { return }
-    Copy-Item $Path "$Path.bak.$Stamp" -Force
+    Backup-File $Path
     ($Data | ConvertTo-Json -Depth 100) | Set-Content -Encoding UTF8 $Path
 }
 
@@ -74,8 +97,8 @@ function Install-File ($Source, $Target) {
     if ($DryRun) { Say "    would write $Target"; return }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Target) | Out-Null
     if (Test-Path $Target) {
-        Copy-Item $Target "$Target.bak.$Stamp" -Force
-        Say "    ~ $Target  (backup .bak.$Stamp)"
+        Backup-File $Target
+        Say "    ~ $Target  (backup in $BackupDir)"
     } else {
         Say "    + $Target"
     }
