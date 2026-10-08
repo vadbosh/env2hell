@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.1 — 2026-10-08
+
+### Fixed
+
+- **A Helm chart name with its version is not masked.** Under a YAML
+  credential key such as `secrets:`, the line `chart:
+  victoria-metrics-agent-0.30.0` came back as `chart: <REDACTED:29>`.
+  The 0.13.0 block rule sends every child value to the name test. That test
+  knew lower-case words joined by hyphens, but not the same words followed by
+  a version. A new name shape accepts them, with an optional `v` and suffix:
+  `cert-manager-v1.14.4-webhook` is a name too. A value in mixed case stays
+  masked, even when it ends in a version. The rule is in
+  bin/secrets-redact and bin/secrets-redact.ps1. Three cases in
+  tests/test_redact.sh cover a chart under `secrets:`, a versioned name after
+  a label and a mixed-case value that must stay masked.
+
 ## 0.13.0 — 2026-10-05
 
 ### Fixed

@@ -421,6 +421,15 @@ check_shape keep "$(printf 'password:\n  min_length: 12\n  require_digit: true')
                                                                  'a password policy, not a password'
 check_shape keep "$(printf 'secrets:\n  url: https://vault.example.com/v1/kv/data/app')" \
                                                                  'an endpoint under a credential key'
+# A Helm chart with its version is a name: lowercase words, a hyphen, a dotted
+# number. Reported 2026-10-08 -- under `secrets:` the chart of a release came
+# back as `<REDACTED:29>`. A mixed-case value with a version on the end is not
+# that shape and stays masked.
+check_shape keep "$(printf 'secrets:
+  chart: victoria-metrics-agent-0.30.0')"                                                                  'a chart name with its version under a credential key'
+check_shape keep 'kubectl get secret cert-manager-v1.14.4-webhook -n cm' 'a versioned object name after a label'
+check_shape mask "$(printf 'secrets:
+  key: Xq7Rt2Lm9Wz4-1.2.3')"                                                                  'a mixed-case value ending in a version'
 # The block ends at the first line as shallow as its parent. `other:` is a
 # sibling of `userpass:`, not a child, and an unlabelled sibling stays as it is.
 check_shape keep "$(printf 'auth:\n  userpass:\n    bosh: short\n  other: %s' "$YPW")" \

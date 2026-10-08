@@ -156,6 +156,7 @@ $NameShapes = @(
     '^[A-Za-z_][A-Za-z_.]*\.[A-Za-z_.]*$'   # pkg.field.name
     '^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$'         # ANTHROPIC_API_KEY
     '^[a-z]+(-[a-z]+)+$'                    # prometheus-operator
+    '^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*-v?[0-9]+([.][0-9]+)+(-[a-z0-9.]+)?$'  # victoria-metrics-agent-0.30.0
     '^[a-z]+(_[a-z]+)+$'                    # aws_secrets_manager
 )
 
