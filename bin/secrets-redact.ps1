@@ -232,12 +232,20 @@ function Edit-Line([string]$Line) {
                 $q = [string]$v[0]
                 $v = $v.Substring(1, $v.Length - 2)
             }
+            # JSON puts the scheme inside the quotes: {"Authorization": "Bearer …"}.
+            # The scheme stays readable, as it does unquoted, and what follows
+            # it clears the quoted floor of 8 on its own.
+            $sch = ''
+            if ($q -and $v -match '^(?i:bearer|basic|token)[^\S\n]+') {
+                $sch = $Matches[0]
+                $v = $v.Substring($sch.Length)
+            }
             # A quoted value only has to clear Test-Name; an unquoted one is
             # also judged on length and composition.
-            $keep = if ($q) { (Test-Name $v) -or (Test-Mask $v) } else { Test-KeepBare $v }
+            $keep = if ($q) { (Test-Name $v) -or (Test-Mask $v) -or ($sch -and $v.Length -lt 8) } else { Test-KeepBare $v }
             if ($keep) { return $m.Value }            # a name, not a value
             $script:Hits++
-            $m.Groups['head'].Value + $q + (Get-Mask $v) + $q
+            $m.Groups['head'].Value + $q + $sch + (Get-Mask $v) + $q
     })
     $out = Edit-Glued $out
     return $out

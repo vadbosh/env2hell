@@ -339,6 +339,21 @@ else
     no "keeps the scheme word readable" "expected 'Authorization: Bearer <REDACTED:…>', got: $got"
 fi
 
+# JSON puts the scheme inside the quotes. Before 0.13.5 the quoted branch took
+# the scheme as part of the value: the placeholder in public Opencode docs came
+# back as "<REDACTED:10>", and a real token lost its scheme word.
+check_shape mask "\"Authorization\": \"Bearer $BEARER\""         'a bearer token in JSON'
+check_shape keep '"Authorization": "Bearer ..."'                 'a JSON placeholder after the scheme'
+check_shape keep '"Authorization": "Bearer <token>"'             'the same, in angle brackets'
+
+# Through --filter: hook_out puts the line into JSON unescaped, and quotes break it.
+got="$(printf '%s\n' "\"Authorization\": \"Bearer $BEARER\"" | run_tool --filter)"
+if grep -qF -- '"Authorization": "Bearer <REDACTED:' <<< "$got"; then
+    ok "keeps the scheme word readable inside JSON quotes"
+else
+    no "keeps the scheme word readable inside JSON quotes" "expected '\"Authorization\": \"Bearer <REDACTED:…>\"', got: $got"
+fi
+
 # A password is exactly the string that carries punctuation, and VALUE's
 # character class stops at the first `!`. Inside quotes the writer has already
 # marked where the value ends, so that is the boundary to use.

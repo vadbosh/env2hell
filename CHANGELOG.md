@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.5 — 2026-10-08
+
+### Fixed
+
+- **A JSON `Authorization` header keeps its scheme word.** In
+  `"Authorization": "Bearer ..."` the scheme sits inside the quotes, and the
+  quoted-value rule masked it together with the value. The placeholder from
+  the public Opencode documentation came out as `"<REDACTED:10>"`, and a real
+  token lost the word `Bearer`. Now the scheme stays readable, as it does in
+  an unquoted header. The value after it is masked only when it has at least
+  8 characters. Fixed in both ports.
+
 ## 0.13.4 — 2026-10-08
 
 ### Fixed
