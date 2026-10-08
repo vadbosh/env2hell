@@ -175,6 +175,17 @@ first line at the parent's indent or shallower closes it. A child value is
 decided by the same rules as a labelled value on one line. So `min_length: 12`
 under `password:` stays readable, and so does a URL.
 
+A value can also stand on its own line, with no label at all. Two examples are
+a file of passwords kept one per line, and `cut -d= -f1` run over one. Such a
+line is masked by its shape alone. It has to be one token of 8 to 128
+characters with a lower-case letter, an upper-case letter and a digit. Besides
+letters and digits it may hold only `!@#$%^&*()_+=?~.,;:-`. Ordinary output also
+prints some things alone on a line, and they stay readable. These are a flag, a
+path, a hash, a date, an assignment, a heading and a file name as `grep -n`
+prints it. A password without one of the three classes, such as lower-case
+letters and digits only, is not caught. That shape is every hash and every
+generated id.
+
 ## Testing a format
 
 Never paste a live key to check. Construct one of the same shape:

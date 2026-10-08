@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.13.3 — 2026-10-08
+
+### Fixed
+
+- **A password alone on its line is masked, with no label.** A file held one
+  password and nothing else. Read, an `@` attachment and `cut -d= -f1` each
+  printed it in full, and it reached the transcript. Every rule needed either
+  a provider prefix or a label on the same line, and this line had neither.
+  A line that is one token is now masked by its shape alone. The token has 8
+  to 128 characters and a lower-case letter, an upper-case letter and a digit.
+  Besides letters and digits it may hold only `!@#$%^&*()_+=?~.,;:-`. A
+  line-number prefix from `cat -n` or `grep -n` is allowed in front. A flag,
+  a path, a hash, a date, an assignment, a heading and a file name as
+  `grep -n` or `grep -A` prints it stay readable. Over 396711 lines of tool
+  output on one machine, the rule masked 71, most of them random tokens. A
+  password without one of the three classes is still not caught: that shape
+  is every hash and generated id. secrets-guard asks the redactor, so it now
+  also refuses `cat` of such a file and its `@` attachment. The rule is
+  scrub_bare() in bin/secrets-redact and Edit-Bare in bin/secrets-redact.ps1,
+  with a paragraph in docs/patterns.*.md. tests/test_redact.sh has 18 new
+  cases, and the parity corpus has 10 new lines.
+
 ## 0.13.2 — 2026-10-08
 
 ### Fixed

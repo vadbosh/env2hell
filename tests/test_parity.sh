@@ -65,6 +65,12 @@ HEX='deadbeefdeadbeefdeadbeefdeadbeef'
     printf 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABlwAAAAdzc2gt\n'
     printf -- '-----END OPENSSH PRIVATE KEY-----\n'
     printf 'ordinary line after the key\n'
+    # A bare credential line: no label, the shape alone. Assembled at run time.
+    BARE="$(printf %s%s Q7XKPZRM 4HDV2a9c)"
+    printf "%s\n" "$BARE"
+    printf "     1\t%s\n" "$BARE"
+    printf "1:%s\n" "$BARE"
+    printf "ResourceGroup2026Name\n-ssh-V3-key9\nShor1aA\nREADME.md:12\nREADME.ru.md-12-\nSection2:\nls(1)\n"
 } > "$tmp/c-shapes"
 
 for corpus in ls source git shapes; do

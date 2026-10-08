@@ -430,6 +430,32 @@ check_shape keep "$(printf 'secrets:
 check_shape keep 'kubectl get secret cert-manager-v1.14.4-webhook -n cm' 'a versioned object name after a label'
 check_shape mask "$(printf 'secrets:
   key: Xq7Rt2Lm9Wz4-1.2.3')"                                                                  'a mixed-case value ending in a version'
+
+# A bare credential line: a file holding only a password, read whole or cut
+# out of KEY=VALUE with cut -d= -f1. Reported 2026-10-08: it reached the
+# transcript through Read, an @ attachment and cut, because every rule wanted
+# a label. The value is assembled at run time and is invented.
+BARE="$(printf %s%s Q7XKPZRM 4HDV2a9c)"
+check_shape mask "$BARE"                          "a password alone on its line"
+check_shape mask "  $BARE  "                      "the same with spaces around it"
+check_shape mask "$(printf "     1\t%s" "$BARE")" "the same as cat -n prints it"
+check_shape mask "1:$BARE"                        "the same as grep -n prints it"
+check_shape keep "-ssh-V3-key9"                    "a flag, not a value"
+check_shape keep "a3f9c2e1b7d4f6a8c0e2"            "a lower-case hex hash"
+check_shape keep "src/Main2File.java"              "a path"
+check_shape keep "Shor1aA"                         "seven characters, below the floor"
+check_shape keep "Release 2026 Notes Again"        "words with spaces"
+# A file of passwords for different services, one per line. Assembled at run
+# time; the values are invented.
+check_shape mask "$(printf %s%s Tr0ub4 "dor&3")"          "an 11-character password with a special character"
+check_shape mask "$(printf %s%s Pa55 word)"              "an 8-character password"
+check_shape mask "$(printf %s%s Xk9.Lm2, "Qp7;Rt")"      "a password with . , and ;"
+check_shape keep "README.md:12"                    "a file name as grep -n prints it"
+check_shape keep "README.ru.md-12-"                "a file name as grep -A prints it"
+check_shape keep "Section2:"                       "a heading"
+check_shape keep "ls(1)"                           "a manual reference"
+check_shape keep "NAME=Val9ue"                     "an assignment, decided by the labelled rule"
+check_shape keep "2026-10-08"                      "a date"
 # The block ends at the first line as shallow as its parent. `other:` is a
 # sibling of `userpass:`, not a child, and an unlabelled sibling stays as it is.
 check_shape keep "$(printf 'auth:\n  userpass:\n    bosh: short\n  other: %s' "$YPW")" \

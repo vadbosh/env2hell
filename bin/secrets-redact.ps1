@@ -303,6 +303,34 @@ function Edit-Child([string]$Line) {
     return $head + (Get-Mask $v) + $rest.Substring($t.Length)
 }
 
+# A line that is one credential-shaped token and nothing else is masked by its
+# shape alone, with no label anywhere: a file of passwords kept one per line,
+# `cut -d= -f1` over it, `cat -n` and `grep -n` of it. Same rule as
+# scrub_bare() in the POSIX file, where the measurement and the limits are
+# written down: 8 to 128 characters, a lower-case letter, an upper-case letter
+# and a digit, only !@#$%^&*()_+=?~.,;:- besides letters and digits, and none
+# of the shapes of ordinary output. Runs after Edit-Line, the order of the
+# POSIX file.
+$BareLine = [regex]::new(
+    '^(?<head>[ \t]*(?:[0-9]+[\t:][ \t]*)?)' +
+    '(?<val>[A-Za-z0-9!@#$%^&*()_+=?~.,;:-]{8,128})(?<tail>[ \t\r]*)$',
+    'Multiline')
+
+function Edit-Bare([string]$Text) {
+    return $BareLine.Replace($Text, {
+        param($m)
+        $v = $m.Groups['val'].Value
+        $keep = ($v -cnotmatch '[a-z]') -or ($v -cnotmatch '[A-Z]') -or ($v -notmatch '[0-9]') -or
+            ($v -match '^[-#~.]') -or ($v -cmatch '^[0-9a-f]+$') -or ($v -match '^[0-9.:,-]+$') -or
+            ($v -match '^[A-Za-z_][A-Za-z0-9_.-]*=') -or $v.EndsWith(':') -or ($v -match '\([0-9]+\)$') -or
+            ($v -match '\.[A-Za-z][A-Za-z0-9]{0,5}([-:][0-9]+)*[-:]?$') -or
+            (Test-Name $v) -or (Test-Mask $v)
+        if ($keep) { return $m.Value }
+        $script:Hits++
+        $m.Groups['head'].Value + (Get-Mask $v) + $m.Groups['tail'].Value
+    })
+}
+
 function Edit-Text([string]$Text) {
     if ($Text -eq '') { return $Text }
     $out = $KeyBody.Replace($Text, {
@@ -312,6 +340,7 @@ function Edit-Text([string]$Text) {
         }) -join "`n"
     })
     $out = Edit-Line $out
+    $out = Edit-Bare $out
     return $CredBlock.Replace($out, {
         param($m)
         $body = $m.Groups['body']
