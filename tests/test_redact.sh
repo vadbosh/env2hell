@@ -724,6 +724,13 @@ check_shape keep 'the secret "never stored in git" rule'       'a bare label bef
 check_shape mask "relay -token $HEX"                           'a single-dash flag still takes a space'
 check_shape mask "pass   password=$HEX"                        'a labelled value after a skipped bare label'
 
+# A flag is a word that begins with a dash. The dash inside `two-pass` is not
+# one: a skill digest saying "via two-pass <method>" was masked, and the guard
+# then refused Codex the whole file (F188).
+check_shape keep "via two-pass $HEX review"                     'a label after a dash inside a word'
+check_shape keep "the x-secret $HEX header"                     'a hyphenated name that ends in a label'
+check_shape mask "tool --db-pass $HEX"                          'a long flag whose name ends in a label'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then

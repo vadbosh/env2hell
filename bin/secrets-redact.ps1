@@ -73,7 +73,11 @@ $patterns = @(
 $patternsRe = [regex]::new(($patterns -join '|'), 'None')
 
 # ── tier 2: what a secret is called, and what one looks like ────────────────
-$Label = '(?<dash>--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
+# A flag is a word that begins with a dash: the lookbehind admits `--pass`,
+# `-token` and `--db-pass`, and refuses the dash inside `two-pass` or
+# `x-secret`, whose next word is prose (F188). Without the dash the label needs
+# `=` or `:`, exactly as bin/secrets-redact decides it.
+$Label = '(?<dash>(?<=(?:^|[\s"''])(?:-[^\s"'']*)?)--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
          'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|' +
          'client[-_]?secret|client[-_]?key[-_]?data|private[-_]?key|credential|authorization|' +
          # SQL says it in two words: CREATE USER … IDENTIFIED BY '…', the same
