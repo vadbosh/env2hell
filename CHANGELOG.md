@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.12 — 2026-10-09
+
+### Security
+
+- **The fallback rule of 0.13.11 covers what the next run printed.** A second
+  Codex review of the same repository put four more fallback keys into its
+  transcript (F198):
+  - a C# verbatim or interpolated string, `: @"…"` or `: $"…"` — the `@`
+    stood between the value position and the quote;
+  - a 32-character key of lower case and digits — from 16 characters a letter
+    and a digit are now enough; shorter values still need all three classes;
+  - `subscriptionkey`, and its misspelling `subcriptionkey`, are labels now.
+  `ClientId` fallbacks stay readable: an OAuth client id is not a secret.
+  Three new cases in `tests/test_redact.sh`.
+
 ## 0.13.11 — 2026-10-09
 
 ### Security

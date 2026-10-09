@@ -740,6 +740,12 @@ check_shape mask "string secret = Env(\"X\") ?? \"$NEARV\";"   'a fallback liter
 check_shape keep 'var key = cfg["ClientSecretV2"];'               'a key name that carries a label'
 check_shape keep "var name = \"$NEARV\";"                         'a literal on a line with no label'
 check_shape keep 'token = Get("ApiVersion2Beta");'                'a key name passed as an argument'
+# The next Codex run printed four more: C# verbatim strings, `: @"…"`, and a
+# 32-character key with no upper case, under a misspelt "SubcriptionKey".
+NEARL="0123abcd4567ef89"'0123abcd4567ef89'
+check_shape mask "return x ? cfg[\"ClientSecret\"] : @\"$NEARV\";"   'a fallback in a C# verbatim string'
+check_shape mask "return x ? cfg[\"SubcriptionKey\"] : \"$NEARL\";"  'a long lower-case fallback under a misspelt label'
+check_shape keep "return x ? cfg[\"ClientId\"] : @\"$NEARV\";"       'a fallback under a key that names no secret'
 
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.

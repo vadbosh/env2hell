@@ -78,7 +78,7 @@ $patternsRe = [regex]::new(($patterns -join '|'), 'None')
 # `x-secret`, whose next word is prose (F188). Without the dash the label needs
 # `=` or `:`, exactly as bin/secrets-redact decides it.
 $Label = '(?<dash>(?<=(?:^|[\s"''])(?:-[^\s"'']*)?)--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
-         'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|' +
+         'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|subs?cription[-_]?key|' +
          'client[-_]?secret|client[-_]?key[-_]?data|private[-_]?key|credential|authorization|' +
          # SQL says it in two words: CREATE USER … IDENTIFIED BY '…', the same
          # spelling in Oracle, MySQL and MariaDB. `bin/safe-env` has carried
@@ -357,7 +357,8 @@ function Edit-Bare([string]$Text) {
 # scrub_near() in bin/secrets-redact: 12-64 token characters with lower case,
 # upper case and a digit, not itself a name or a label.
 $LabelAny  = [regex]::new($Label, 'IgnoreCase')
-$NearValue = [regex]::new('(?<=(?:[:=]|\?\?|return)[ \t]*)"(?<v>[A-Za-z0-9+/=_.~-]{12,64})"')
+# `[@$]*` before the quote: C# verbatim and interpolated strings, `: @"…"`.
+$NearValue = [regex]::new('(?<=(?:[:=]|\?\?|return)[ \t]*[@$]*)"(?<v>[A-Za-z0-9+/=_.~-]{12,64})"')
 
 function Edit-Near([string]$Text) {
     ($Text.Split([char]10) | ForEach-Object {
@@ -366,7 +367,10 @@ function Edit-Near([string]$Text) {
         $NearValue.Replace($line, {
             param($m)
             $v = $m.Groups['v'].Value
-            if ($v -cmatch '[a-z]' -and $v -cmatch '[A-Z]' -and $v -match '[0-9]' -and
+            # From 16 characters a letter and a digit are enough; below that
+            # lower case, upper case and a digit, as in bin/secrets-redact.
+            $mixed = if ($v.Length -ge 16) { $v -match '[A-Za-z]' } else { $v -cmatch '[a-z]' -and $v -cmatch '[A-Z]' }
+            if ($mixed -and $v -match '[0-9]' -and
                 -not $LabelAny.IsMatch($v) -and -not (Test-Name $v) -and -not (Test-Mask $v)) {
                 $script:Hits++; '"' + (Get-Mask $v) + '"'
             } else { $m.Value }
