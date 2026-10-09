@@ -1051,6 +1051,21 @@ else
     no "the Opencode plugin exists" "missing: $PLUGIN"
 fi
 
+# ── a private key in base64, as kubeconfig carries it ──────────────────────
+# `kubectl config view --raw` prints client-key-data: the whole PEM, header
+# included, encoded once more. Tier 1 knew the header only in clear, and the
+# value has no label tier 2 knew, so it went through whole (2026-10-09).
+# Assembled at run time: no line of this file holds the encoded shape.
+b64 () { base64 | tr -d '\n'; }
+pem () { printf -- '-----%s %s-----\nMIIEfakefakefakefakefakefakefakefakefakefake\n-----END %s-----\n' BEGIN "$1" "$1"; }
+check_shape mask "    client-key-data: $(pem 'RSA PRIVATE KEY' | b64)"   'kubeconfig client-key-data, RSA'
+check_shape mask "    client-key-data: $(pem 'EC PRIVATE KEY' | b64)"    'kubeconfig client-key-data, EC'
+check_shape mask "KEY_B64=$(pem 'PRIVATE KEY' | b64)"                    'a base64 PKCS#8 key under no known label'
+check_shape mask "x $(pem 'OPENSSH PRIVATE KEY' | b64) y"                'a base64 OpenSSH key inside a line'
+check_shape mask "x $(pem 'ENCRYPTED PRIVATE KEY' | b64)"                'a base64 encrypted key'
+check_shape mask "    client-key-data: QUJD$(printf 'notapemheader-but-a-key' | b64)" 'client-key-data with a header tier 1 does not know'
+check_shape keep "    client-certificate-data: $(printf -- '-----%s CERTIFICATE-----\nMIIC\n' BEGIN | b64)" 'a base64 certificate'
+
 # ── tier 1 must not drift away from safe-env ────────────────────────────────
 # The provider patterns are duplicated rather than shared: both files are
 # installed standalone onto PATH, and a shared include would be a third file

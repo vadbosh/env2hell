@@ -373,6 +373,47 @@ echo "denied — /proc/self/environ, not only a numbered process"
 check 2 'cat /proc/self/environ'
 check 2 'strings /proc/thread-self/environ'
 check 2 'cat /proc/1/environ'
+# The shell fills the component in after the guard has looked: the parent's
+# environment is the assistant's own, and the glob is every process's.
+check 2 'cat /proc/$PPID/environ'
+check 2 'cat /proc/$$/environ'
+check 2 'cat /proc/*/environ'
+check 2 'hexdump -C /proc/self/environ'
+check 0 'ls /proc/1/'
+
+echo
+echo "denied — hexdump and hd are readers like xxd and od"
+check 2 'hexdump -C .env'
+check 2 'hd ~/.aws/credentials'
+check 0 'hexdump -C build/app.bin'
+
+echo
+echo "denied — awk and jq carry the whole environment as a value"
+check 2 "awk 'BEGIN{for(k in ENVIRON) print k\"=\"ENVIRON[k]}'"
+check 2 'jq -n env'
+check 2 "jq -n '\$ENV'"
+check 0 "awk 'BEGIN{print ENVIRON[\"HOME\"]}'"
+check 0 "awk '{print \$1}' f"
+check 0 'jq . file.json'
+check 0 "jq -n '\$ENV.HOME'"
+check 0 "jq -n 'env.HOME'"
+check 0 'jq . env.json'
+check 0 "jq -r '.permission.bash.env' opencode.json"
+check 0 "jq '.[] | select(.name == \"env\")' f.json"
+
+echo
+echo "denied — busybox runs its first argument as the command"
+check 2 'busybox env'
+check 0 'busybox ls'
+
+echo
+echo "denied — kubectl config view --raw prints the client keys"
+check 2 'kubectl config view --raw'
+check 2 'kubectl config view --flatten'
+check 2 'kubectl config view --minify --raw=true'
+check 0 'kubectl config view'
+check 0 'kubectl config view --minify'
+check 0 'kubectl get pods -A'
 
 echo
 echo "denied — a dump reached through something that runs commands"

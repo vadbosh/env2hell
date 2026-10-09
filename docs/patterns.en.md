@@ -31,6 +31,7 @@ same output and reveals nothing that helps an attacker.
 | Atlassian API token | `ATATT` + 20 or more |
 | JWT | `eyJ…` `.` `eyJ…` `.` |
 | Private key | a `BEGIN … PRIVATE KEY` line |
+| Private key in base64 | `LS0tLS1CRUdJTi…` with an encoded `… PRIVATE KEY` header, as in kubeconfig `client-key-data` |
 | Password in a URL | `://user:password@` |
 | SQL password | `IDENTIFIED BY '…'` |
 
@@ -291,8 +292,9 @@ so neither can be added back by tidiness.
 
 Reading one of these is denied — with a pager that prints the whole file (`cat`,
 `bat`, `tac`, `nl`, `head`, `tail`, `less`, `more`, `view`, `od`, `xxd`,
-`strings`, `type`, `gc`) and with an extractor that takes a part (`grep`, `rg`,
-`sed`, `awk`, `sort`, `uniq`, `cut`, `rev`, `jq`, `yq` and their relatives). An
+`hexdump`, `hd`, `strings`, `type`, `gc`) and with an extractor that takes a
+part (`grep`, `rg`, `sed`, `awk`, `sort`, `uniq`, `cut`, `rev`, `jq`, `yq` and
+their relatives). An
 in-place edit is not a read — for `sed`, `perl` and `awk`, where `-i` really means in-place; for `grep`, `rg` and `sort` it is a different flag, and the first quoted argument of a
 grep-like command is the search pattern rather than a path. Listing them, moving them or checking
 that they exist is not — the guard is about printing content, not about the

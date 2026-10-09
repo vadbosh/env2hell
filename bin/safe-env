@@ -54,6 +54,12 @@ BEGIN {
   RE = RE "|eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\."
   RE = RE "|://[^/:@ ]+:[^/:@ ]{3,}@"
   RE = RE "|BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY"
+  # The same header in base64, as kubeconfig carries it in client-key-data:
+  # `-----BEGIN ` encodes to LS0tLS1CRUdJTi, and the alternatives are the
+  # bare, RSA, EC, DSA, OPENSSH, ENCRYPTED and PGP spellings of
+  # `PRIVATE KEY` after it. Certificates encode differently and are left
+  # alone. `kubectl config view --raw` printed a key this way (2026-10-09).
+  RE = RE "|LS0tLS1CRUdJTiB(QUklWQVRFIEtF|SU0EgUFJJVkFURSBL|FQyBQUklWQVRFIEtF|EU0EgUFJJVkFURSBL|PUEVOU1NIIFBSSVZBVEUgS0VZ|FTkNSWVBURUQgUFJJVkFURSBL|QR1AgUFJJVkFURSBL)[A-Za-z0-9+/=]*"
 
   # The OpenAI family sits apart because it needs a left boundary, and a
   # boundary cannot go inside RE: the alternatives there are masked whole, and

@@ -57,6 +57,14 @@ Wrappers are stepped over before the name is read, so `sudo env`, `rtk env` and
 sudo rtk env    →  skip sudo, skip rtk, examine env
 ```
 
+`busybox` is a wrapper too: `busybox env` runs `env`.
+
+Besides the shell's own dump commands, pass A denies
+`kubectl config view --raw` and `kubectl config view --flatten`. They print
+`~/.kube/config` with its client keys, and `cat` of that file is denied in
+pass B. Without these flags kubectl omits the keys itself, so a plain
+`kubectl config view` passes.
+
 Three things are peeled off before the first token is read as a command name,
 because each of them used to make the whole sub-command unreadable rather than
 just that token:
@@ -92,9 +100,10 @@ a secret store.
 
 Reading commands come in two kinds. **Pagers** print the whole file: `cat`,
 `bat`, `batcat`, `tac`, `nl`, `head`, `tail`, `less`, `more`, `view`, `od`,
-`xxd`, `strings`, plus PowerShell's `type` and `gc`. **Extractors** take a part
-of it: `grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack`, `sed`, `awk`, `gawk`,
-`mawk`, `sort`, `uniq`, `cut`, `rev`, `column`, `jq`, `yq`.
+`xxd`, `hexdump`, `hd`, `strings`, plus PowerShell's `type` and `gc`.
+**Extractors** take a part of it: `grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack`,
+`sed`, `awk`, `gawk`, `mawk`, `sort`, `uniq`, `cut`, `rev`, `column`, `jq`,
+`yq`.
 
 The second list arrived in 0.7.0, and before it `grep . ~/.aws/credentials`
 printed the file while the guard said nothing. A pager is how a file gets read
@@ -130,7 +139,7 @@ Git Bash or WSL shell is handed one spelling one moment and the other the next:
 | `.bashrc`, `.zshrc`, `.profile`, `.netrc`, `.envrc` | POSIX |
 | `_netrc` | Windows, where that is what `.netrc` is called |
 | `Microsoft.PowerShell_profile.ps1` | Windows, where `$env:API_KEY = "..."` is written |
-| `/proc/N/environ`, `/proc/self/environ` | Linux only; no such file elsewhere |
+| `/proc/N/environ`, `/proc/self/environ`, `/proc/$PPID/environ`, `/proc/*/environ` | Linux only; no such file elsewhere |
 
 The last two rows are what stops the list being half a list. On Windows the
 PowerShell profile plays the part `.bashrc` plays elsewhere, and a key sits in
@@ -450,10 +459,10 @@ the variable is gone (`safe-env | grep NAME`), then start the assistant again.
   `bash -c "echo env"` or `sh -c "set -e; make"` pass because they would pass
   on their own. Only a wrapper that starts a sub-command counts, and nesting
   stops at three levels. `$(env)` and the environment-dumping idiom of Python,
-  Node, Perl and Ruby are denied by pattern; anything else that reaches the
-  same place by another route — `xargs sh -c`, `find -exec`, `ssh host '…'` —
-  is not followed. Parsing an arbitrary program to find out what it does is the
-  sandbox this is not.
+  Node, Perl, Ruby, awk and jq are denied by pattern; anything else that
+  reaches the same place by another route — `xargs sh -c`, `find -exec`,
+  `ssh host '…'` — is not followed. Parsing an arbitrary program to find out
+  what it does is the sandbox this is not.
 - **An interpreter will read anything.** `python3 -c 'print(open(".env").read())'`,
   `perl -pe '' .env` and any three-line program print a store and pass. The
   payload there is arbitrary code, and parsing it would mean building the

@@ -35,6 +35,7 @@ $patterns = @(
     'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.'    # JWT
     '://[^/:@\s]+:[^/:@\s]{3,}@'                        # password inside a URL
     'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY'        # private key block
+    'LS0tLS1CRUdJTiB(QUklWQVRFIEtF|SU0EgUFJJVkFURSBL|FQyBQUklWQVRFIEtF|EU0EgUFJJVkFURSBL|PUEVOU1NIIFBSSVZBVEUgS0VZ|FTkNSWVBURUQgUFJJVkFURSBL|QR1AgUFJJVkFURSBL)[A-Za-z0-9+/=]*'  # the same, base64 (kubeconfig)
 )
 
 # Kept out of $patterns on purpose, and the POSIX pair does the same: this list

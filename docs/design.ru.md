@@ -57,6 +57,13 @@ jq -r Q f.json
 sudo rtk env    →  пропустить sudo, пропустить rtk, смотреть env
 ```
 
+`busybox` — тоже обёртка: `busybox env` запускает `env`.
+
+Кроме команд самой оболочки, проход A запрещает `kubectl config view --raw` и
+`kubectl config view --flatten`. Они печатают `~/.kube/config` вместе с
+клиентскими ключами, а `cat` этого файла запрещён в проходе B. Без этих флагов
+kubectl сам скрывает ключи, поэтому простой `kubectl config view` проходит.
+
 Прежде чем первая лексема будет прочитана как имя команды, с неё снимают три
 вещи. Каждая из них раньше делала нечитаемой всю под-команду, а не одну лексему:
 
@@ -91,9 +98,9 @@ sudo rtk env    →  пропустить sudo, пропустить rtk, смо
 
 Читающих команд два вида. **Просмотрщики** печатают файл целиком: `cat`, `bat`,
 `batcat`, `tac`, `nl`, `head`, `tail`, `less`, `more`, `view`, `od`, `xxd`,
-`strings`, а также `type` и `gc` из PowerShell. **Экстракторы** достают часть:
-`grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack`, `sed`, `awk`, `gawk`, `mawk`,
-`sort`, `uniq`, `cut`, `rev`, `column`, `jq`, `yq`.
+`hexdump`, `hd`, `strings`, а также `type` и `gc` из PowerShell. **Экстракторы**
+достают часть: `grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack`, `sed`, `awk`,
+`gawk`, `mawk`, `sort`, `uniq`, `cut`, `rev`, `column`, `jq`, `yq`.
 
 Второй список появился в 0.7.0, и до него `grep . ~/.aws/credentials` печатал
 файл, а страж молчал. Просмотрщик — это то, чем читают файл целиком; часть файла
@@ -127,7 +134,7 @@ sudo rtk env    →  пропустить sudo, пропустить rtk, смо
 | `.bashrc`, `.zshrc`, `.profile`, `.netrc`, `.envrc` | POSIX |
 | `_netrc` | Windows: там `.netrc` называется так |
 | `Microsoft.PowerShell_profile.ps1` | Windows: в него пишут `$env:API_KEY = "..."` |
-| `/proc/N/environ`, `/proc/self/environ` | только Linux, в других системах такого файла нет |
+| `/proc/N/environ`, `/proc/self/environ`, `/proc/$PPID/environ`, `/proc/*/environ` | только Linux, в других системах такого файла нет |
 
 Две последние строки нужны ровно потому, что список без них был бы половинным:
 на Windows роль `.bashrc` играет профиль PowerShell, и ключ в нём лежит так же
@@ -452,8 +459,8 @@ echo "$ANTHROPIC_MODEL"       # одна переменная, когда изв
   `cat ~/.bashrc`. `bash -c "echo env"` и `sh -c "set -e; make"` проходят: они
   прошли бы и сами по себе. Учитывается только обёртка в начале подкоманды, вложенность
   ограничена тремя уровнями. `$(env)` и идиома печати окружения в Python, Node,
-  Perl и Ruby запрещены по шаблону. Всё, что приходит к тому же результату
-  другим путём — `xargs sh -c`, `find -exec`, `ssh host '…'`, — не
+  Perl, Ruby, awk и jq запрещены по шаблону. Всё, что приходит к тому же
+  результату другим путём — `xargs sh -c`, `find -exec`, `ssh host '…'`, — не
   отслеживается: разбирать произвольную программу, чтобы понять, что она
   делает, — это та самая изолированная среда, которой здесь нет.
 - **Интерпретатор прочитает что угодно.** `python3 -c 'print(open(".env").read())'`,

@@ -27,6 +27,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $EnvMessage = '[secrets-guard] Blocked: bare env/printenv/export/set/declare/Get-ChildItem Env: leaks secrets to the session. Use `safe-env` (values masked), or $env:NAME for one value.'
+$KubeMessage = '[secrets-guard] Blocked: `kubectl config view --raw` / `--flatten` prints the kubeconfig with its client keys and tokens. Run it without --raw: kubectl then omits the key material itself.'
 
 function Deny([string]$Message) {
     [Console]::Error.WriteLine($Message)
@@ -175,7 +176,9 @@ if ($guardDepth -lt 3 -and -not [string]::IsNullOrWhiteSpace($command)) {
 $scan = $command -replace "'[^']*'", 'Q' -replace '"[^"]*"', 'Q'
 
 # Wrappers that precede the real command and must be stepped over.
-$wrappers = @('sudo', 'rtk', 'time', 'command', 'exec', 'xargs', 'nice', 'nohup', '&')
+# `busybox env` is env with another binary in front: busybox runs its first
+# argument as the applet.
+$wrappers = @('sudo', 'rtk', 'time', 'command', 'exec', 'xargs', 'nice', 'nohup', 'busybox', '&')
 
 # A newline separates sub-commands as surely as `;` does. The POSIX guard never
 # had to say so — its awk program reads records, and a record is a line — so the
@@ -253,6 +256,17 @@ foreach ($part in ($scan -split '\|\||&&|;|&|\||\r?\n')) {
         '^(export)$'            { if ($rest.Count -eq 0 -or $rest[0] -eq '-p') { Deny $EnvMessage } }
         '^(set)$'               { if ($rest.Count -eq 0) { Deny $EnvMessage } }
         '^(history)$'           { Deny $EnvMessage }
+        '^(kubectl)$'           {
+            # `kubectl config view --raw` prints the kubeconfig with
+            # client-key-data, a private key in base64; `cat ~/.kube/config` is
+            # denied for the same content. Without --raw kubectl omits the key
+            # fields itself. `--flatten` inlines them for a portable file.
+            $lower = @($rest | ForEach-Object { $_.ToLower() })
+            if (($lower -contains 'config') -and ($lower -contains 'view') -and
+                ($lower | Where-Object { $_ -in @('--raw', '--raw=true', '--flatten', '--flatten=true') })) {
+                Deny $KubeMessage
+            }
+        }
         '^(declare|typeset)$'   {
             $assigns = $false
             foreach ($t in $rest) { if ($t -like '*=*') { $assigns = $true } }
@@ -325,7 +339,7 @@ function Remove-FirstQuotedArgument([string]$text) {
     return $out.ToString()
 }
 
-$readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|strings|type|gc|get-content)([\s]|$)'
+$readers = '(^|[\s;|&(])(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|hexdump|hd|strings|type|gc|get-content)([\s]|$)'
 
 # The extracting readers, kept apart because one of them is not always a read:
 # `sed -i` and `awk -i inplace` write the file and print nothing. The POSIX
@@ -366,7 +380,10 @@ $secrets = '((^|[\s"''/=])\.env([.\s"'']|$)' +          # .env
            # `~/.ssh/config` is deliberately NOT here: hostnames and
            # IdentityFile paths, not keys. Pinned as an `allow` in
            # tests/test_policy.sh so nobody adds it by tidiness.
-           '|/proc/([0-9]+|self|thread-self)/environ)'   # Linux only, by nature
+           # Linux only, by nature. Any component, not digits/self/thread-self:
+           # the shell fills in `/proc/$PPID/environ` and `/proc/*/environ`
+           # after this guard has looked, and both went through (2026-10-09).
+           '|/proc/[^/\s]+/environ)'
 
 # The reader and the path have to be in the SAME sub-command. Looking for them
 # anywhere in the whole line denied things that read nothing:
@@ -477,12 +494,24 @@ $dumpWord = '(env|printenv|set|declare|typeset|history)'
 # shape as `bash -c`.
 $payload  = '(-c|-e|eval|rtk\s+(run|proxy))\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
 $idiom    = '(os\.environ|process\.env|%ENV|ENV\.to_h|ENV\.to_hash|ENV\.each)'
+# awk and jq carry the whole environment as a value of their own. Looping over
+# ENVIRON prints every pair; ENVIRON["HOME"] reads one and stays allowed. In jq
+# the word has to stand alone: `.env` is a key, `env.HOME` and `$ENV.HOME` read
+# one variable, `env.json` and `my-env` are file names.
+$awkEnv   = 'in\s+ENVIRON([^A-Za-z0-9_\[]|$)'
+$jqCmd    = '(^|\s)jq\s'
+# A word inside a jq string is data: `test("^(env|set)")` and `.name == "env"`
+# read nothing, so the word has to open the program or a pipeline step.
+$jqEnv    = '(^|[\s|]|\s["''])(\$ENV|env)(["'']?([\s|]|$))'
 # A command substitution runs its body as a command, and pass A never sees it.
 $subst    = '\$\(\s*' + $dumpWord + '\s*(\)|\|)'
 
 foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
     if ($rawSub -cmatch $payload -or $rawSub -cmatch $subst -or $rawSub -cmatch $idiom) {
+        Deny $EnvMessage
+    }
+    if ($rawSub -cmatch $awkEnv -or ($rawSub -cmatch $jqCmd -and $rawSub -cmatch $jqEnv)) {
         Deny $EnvMessage
     }
 }
@@ -613,7 +642,7 @@ function Get-ReaderTargets([string]$text) {
             while ($j -lt $g.Count -and ($g[$j] -in @('sudo', 'command', 'rtk') -or $g[$j] -match '^[A-Za-z_][A-Za-z0-9_]*=')) { $j++ }
             if ($j -ge $g.Count) { continue }
             $name = ($g[$j] -split '[/\\]')[-1]
-            if ($name -notmatch '^(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|strings|sed)$') { continue }
+            if ($name -notmatch '^(cat|bat|batcat|tac|nl|head|tail|less|more|view|od|xxd|hexdump|hd|strings|sed)$') { continue }
             $rest = @($g | Select-Object -Skip ($j + 1))
             if ($name -eq 'sed' -and ($rest | Where-Object { $_ -match '^(-i|--in-place)' })) { continue }
 

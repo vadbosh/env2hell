@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.13.6 — 2026-10-09
+
+### Fixed
+
+- **The guard denies more ways to print the whole environment.** A review
+  found these commands allowed in both ports:
+  - `cat /proc/$PPID/environ` and `cat /proc/*/environ`. The `environ` path
+    matched only a number, `self` and `thread-self`, and the shell fills the
+    component in after the guard has looked. `$PPID` is the assistant itself.
+  - `jq -n env`, `jq -n '$ENV'` and an awk loop over `ENVIRON`. Reading one
+    variable, as in `jq -n '$ENV.HOME'` or `ENVIRON["HOME"]`, stays allowed.
+  - `hexdump` and `hd` on a credential store. They are now readers, like `xxd`.
+  - `busybox env`. `busybox` is now a wrapper, like `sudo`.
+- **The guard denies `kubectl config view --raw` and `--flatten`.** They
+  print `~/.kube/config` with its client keys, and `cat` of that file was
+  already denied. A plain `kubectl config view` stays allowed, because
+  kubectl omits the keys there itself.
+- **A private key in base64 is masked.** kubeconfig keeps its key in
+  `client-key-data` as base64 of the whole PEM block, and neither tier
+  recognised it. Tier 1 now matches the encoded `PRIVATE KEY` header, in
+  `secrets-redact` and `safe-env` and in both ports. `client-key-data` is
+  also a label in tier 2. A base64 certificate stays readable.
+
 ## 0.13.5 — 2026-10-08
 
 ### Fixed

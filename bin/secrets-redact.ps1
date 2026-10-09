@@ -66,6 +66,7 @@ $patterns = @(
     'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.'
     '://[^/:@\s]+:[^/:@\s]{3,}@'
     'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY'
+    'LS0tLS1CRUdJTiB(QUklWQVRFIEtF|SU0EgUFJJVkFURSBL|FQyBQUklWQVRFIEtF|EU0EgUFJJVkFURSBL|PUEVOU1NIIFBSSVZBVEUgS0VZ|FTkNSWVBURUQgUFJJVkFURSBL|QR1AgUFJJVkFURSBL)[A-Za-z0-9+/=]*'
 )
 # Case-sensitive, like the POSIX version: `akia…` in lower case is not an AWS
 # key, and masking it would eat ordinary words.
@@ -74,7 +75,7 @@ $patternsRe = [regex]::new(($patterns -join '|'), 'None')
 # ── tier 2: what a secret is called, and what one looks like ────────────────
 $Label = '(?<dash>--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
          'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|' +
-         'client[-_]?secret|private[-_]?key|credential|authorization|' +
+         'client[-_]?secret|client[-_]?key[-_]?data|private[-_]?key|credential|authorization|' +
          # SQL says it in two words: CREATE USER … IDENTIFIED BY '…', the same
          # spelling in Oracle, MySQL and MariaDB. `bin/safe-env` has carried
          # this rule since the first commit and the redactor did not — the
