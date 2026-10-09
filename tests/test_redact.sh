@@ -446,6 +446,17 @@ check_shape keep "$(printf 'secrets:\n  url: https://vault.example.com/v1/kv/dat
 check_shape keep "$(printf 'secrets:
   chart: victoria-metrics-agent-0.30.0')"                                                                  'a chart name with its version under a credential key'
 check_shape keep 'kubectl get secret cert-manager-v1.14.4-webhook -n cm' 'a versioned object name after a label'
+
+# A bare PEM header in a doc example names the shape of a key and holds none:
+# `private_key = "-----BEGIN"` in a SKILL.md drew a warning on 2026-10-09. Only
+# that fragment is a name; a short password literal, a header with its body on
+# the same line and a full header all stay masked. Assembled at run time.
+PEMH="$(printf -- '-----%s' BEGIN)"
+check_shape keep "private_key = \"$PEMH\""                   'a bare PEM header quoted after a private_key label'
+check_shape keep "private_key: $PEMH"                         'a bare PEM header unquoted after a private_key label'
+check_shape mask "private_key = \"$PEMH-----MIIEfakefakefakefake\"" 'a PEM header followed by key text'
+check_shape mask "private_key = \"$PEMH RSA PRIVATE KEY-----\""     'a full PEM header'
+check_shape mask 'password = "Passw0rd9"'                    'a short password literal after a password label'
 check_shape mask "$(printf 'secrets:
   key: Xq7Rt2Lm9Wz4-1.2.3')"                                                                  'a mixed-case value ending in a version'
 
@@ -1090,6 +1101,26 @@ if printf '%s' "$(printf '%s' "$edit_near" | run_tool --warn-only)" \
 else
     no "--warn-only still reports a credential in the edited text" "no warning"
 fi
+
+# Where the credential-shaped text came from decides what the warning says.
+# Only in the old file (originalFile, structuredPatch): the transcript on disk
+# keeps it, the model never received it, so "rotate if real" and no claim that
+# the model printed it. In text the call carried: the original wording.
+old_ctx="$(printf '%s' "$write_far" | run_tool --warn-only | jq -r '.hookSpecificOutput.additionalContext')"
+case "$old_ctx" in
+    *"previous content of the file"*"did not receive it"*"1 credential-shaped"*|*"1 credential-shaped"*"previous content of the file"*"did not receive it"*)
+        ok "--warn-only says old-file text was not in the model context, with the count" ;;
+    *) no "--warn-only old-file wording" "got: $old_ctx" ;;
+esac
+case "$old_ctx" in
+    *"already in the transcript"*) no "--warn-only old-file wording is precise" "still says already in the transcript" ;;
+    *) ok "--warn-only old-file wording does not claim the model printed it" ;;
+esac
+new_ctx="$(printf '%s' "$edit_near" | run_tool --warn-only | jq -r '.hookSpecificOutput.additionalContext')"
+case "$new_ctx" in
+    *"already in the transcript"*) ok "--warn-only keeps the original wording for text the call carried" ;;
+    *) no "--warn-only original wording for new text" "got: $new_ctx" ;;
+esac
 
 # ── the Opencode plugin must call this CLI, not reimplement it ──────────────
 PLUGIN="$SRC/plugins/opencode/secrets-redact.ts"

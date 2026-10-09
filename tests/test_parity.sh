@@ -72,6 +72,7 @@ HEX='deadbeefdeadbeefdeadbeefdeadbeef'
     printf "1:%s\n" "$BARE"
     printf 'history-SKILL.md.bak.20261001-191831\n'
     printf "ResourceGroup2026Name\n-ssh-V3-key9\nShor1aA\nREADME.md:12\nREADME.ru.md-12-\nSection2:\nls(1)\n"
+    printf 'private_key = "-----%s"\n' BEGIN
 } > "$tmp/c-shapes"
 
 for corpus in ls source git shapes; do

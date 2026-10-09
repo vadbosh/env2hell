@@ -158,6 +158,7 @@ $NameShapes = @(
     '^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$'         # ANTHROPIC_API_KEY
     '^[a-z]+(-[a-z]+)+$'                    # prometheus-operator
     '^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*-v?[0-9]+([.][0-9]+)+(-[a-z0-9.]+)?$'  # victoria-metrics-agent-0.30.0
+    '^(?!.*KEY)-+BEGIN( [A-Z]+)*-*$'               # a bare PEM header, no key material
     '^[a-z]+(_[a-z]+)+$'                    # aws_secrets_manager
 )
 
@@ -500,19 +501,46 @@ if ($mode -eq '--warn-only') {
     if ($text -eq '') { Exit-Hook 0 }
     $null = Edit-Text $text
     if ($script:Hits -le 0) { Exit-Hook 0 }
+    $total = $script:Hits
+
+    # Where the text came from decides what the warning may say. `originalFile`
+    # and the `structuredPatch` hunks are the file as it was before the call:
+    # they reach the transcript on disk but not the model. Hits found only
+    # there are "rotate it if real", not "you printed it".
+    $freshResp = $resp
+    if ($resp -is [psobject] -and ($resp.PSObject.Properties['originalFile'] -or $resp.PSObject.Properties['structuredPatch'])) {
+        $freshResp = $resp | Select-Object -Property * -ExcludeProperty originalFile, structuredPatch
+    }
+    $freshParts = @()
+    if ($errText -is [string]) { $freshParts += $errText }
+    if ($null -ne $freshResp)  { $freshParts += Get-Strings $freshResp }
+    $freshText = ($freshParts -join "`n")
+    $script:Hits = 0
+    if ($freshText -ne '') { $null = Edit-Text $freshText }
+    $fresh = $script:Hits
+    $script:Hits = $total
+
     # Named back exactly as it arrived: a hook wired to PostToolUseFailure that
     # answers "PostToolUse" is answering a question nobody asked, and the reply
     # is dropped.
     $eventName = 'PostToolUse'
     $en = Get-Field $payload 'hook_event_name'
     if ($en -is [string] -and $en -ne '') { $eventName = $en }
+    if ($fresh -gt 0) {
+        $msg = "[secrets-redact] This output contains $total " +
+            'credential-shaped value(s). It cannot be removed here, so it is already ' +
+            'in the transcript. Do not repeat it, do not echo the command that ' +
+            'produced it, and tell the user the value has to be rotated.'
+    } else {
+        $msg = "[secrets-redact] $total credential-shaped value(s) found in the previous " +
+            'content of the file, which Claude Code keeps in the transcript on disk; ' +
+            'the model context did not receive it. Do not repeat it. Rotate it if it ' +
+            'is a real credential.'
+    }
     @{
         hookSpecificOutput = @{
             hookEventName     = $eventName
-            additionalContext = "[secrets-redact] This output contains $($script:Hits) " +
-                'credential-shaped value(s). It cannot be removed here, so it is already ' +
-                'in the transcript. Do not repeat it, do not echo the command that ' +
-                'produced it, and tell the user the value has to be rotated.'
+            additionalContext = $msg
         }
     } | ConvertTo-Json -Depth 20 -Compress
     Exit-Hook 0

@@ -13,6 +13,19 @@
   hook stayed silent. The flag does not predict an empty field, so it is not
   used as a gate. Both ports.
 
+- **The `--warn-only` warning says where the text came from.** When the
+  credential-shaped text sits only in the previous content of the file
+  (`originalFile`, `structuredPatch`), the message now says that Claude Code
+  keeps that content in the transcript on disk and that the model context did
+  not receive it, and asks for rotation only if the value is real. The hit
+  count stays. A hit in text the call carried keeps the old wording. Both
+  ports.
+- **A bare PEM header is not a credential.** A documentation example such as
+  `private_key = "-----BEGIN"` held no key material and drew a warning. A
+  value that is only a PEM header without `KEY` in it counts as a name now.
+  A header with key text after it, a full `PRIVATE KEY` header and short
+  password literals such as `password = "..."` are still masked. Both ports.
+
 ## 0.13.7 — 2026-10-09
 
 ### Fixed
