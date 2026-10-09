@@ -460,6 +460,17 @@ check_shape mask 'password = "Passw0rd9"'                    'a short password l
 check_shape mask "$(printf 'secrets:
   key: Xq7Rt2Lm9Wz4-1.2.3')"                                                                  'a mixed-case value ending in a version'
 
+# helm list: the chart column is a name with a version. Reported 2026-10-08 as
+# `<REDACTED:29>` for victoria-metrics-agent-0.30.0. The rule that keeps it
+# (is_name, 0.13.1) was already in place when the report was re-checked, and
+# neither bin/secrets-redact nor the installed copy reproduces it; these pin
+# the rows as `helm list` prints them, including a release whose own name is a
+# credential label. A real token next to a chart column is still masked.
+check_shape keep "$(printf 'NAME\tCHART\nvm\tvictoria-metrics-agent-0.30.0\n')" 'a helm list row with a chart name and version'
+check_shape keep "$(printf 'token\tmonitoring\t1\t2026-10-09 10:00:00 +0000 UTC\tdeployed\tvictoria-metrics-agent-0.30.0\tv1.2.3\n')" 'a helm list row for a release named token'
+check_shape keep '[{"name":"vm","namespace":"secrets","chart":"victoria-metrics-agent-0.30.0"}]' 'helm list -o json with a chart name and version'
+check_shape mask "$(printf 'token\tmonitoring\tdeployed\tvictoria-metrics-agent-0.30.0\n--pass %s\n' "$HEX")" 'a real credential next to a chart column'
+
 # A bare credential line: a file holding only a password, read whole or cut
 # out of KEY=VALUE with cut -d= -f1. Reported 2026-10-08: it reached the
 # transcript through Read, an @ attachment and cut, because every rule wanted

@@ -12,7 +12,6 @@
   flag set. A credential in the old file sat in the transcript on disk and the
   hook stayed silent. The flag does not predict an empty field, so it is not
   used as a gate. Both ports.
-
 - **The `--warn-only` warning says where the text came from.** When the
   credential-shaped text sits only in the previous content of the file
   (`originalFile`, `structuredPatch`), the message now says that Claude Code
@@ -25,6 +24,16 @@
   value that is only a PEM header without `KEY` in it counts as a name now.
   A header with key text after it, a full `PRIVATE KEY` header and short
   password literals such as `password = "..."` are still masked. Both ports.
+
+### Tests
+
+- **Tests pin the `helm list` chart column.** A report said a chart name with
+  its version, `victoria-metrics-agent-0.30.0`, came back as `<REDACTED:29>`.
+  It does not reproduce: 0.13.1 already keeps that shape as a name, and the
+  installed copy keeps it too. The report most likely came from a copy older
+  than 0.13.1. New cases cover the `helm list` rows, a release named `token`
+  and `-o json`, and check that a real credential beside a chart column is
+  still masked. No change to the redactor.
 
 ## 0.13.7 — 2026-10-09
 
