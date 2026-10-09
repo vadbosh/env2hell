@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A `Write` over an existing file no longer draws a false "rotate it"
+  warning.** Claude Code's result for an overwrite carries `structuredPatch`,
+  whose `-` lines are the whole previous file. The session never read that
+  text, so the warning that it was "already in the transcript" was untrue. It
+  fired for a clean new `SKILL.md` because the old one held two documentation
+  examples. `--warn-only` now skips `structuredPatch` for `Write`, as it
+  already skipped `originalFile`. The new text is still read through
+  `content`, and an `Edit` keeps its patch.
+
 ## 0.13.7 — 2026-10-09
 
 ### Fixed
