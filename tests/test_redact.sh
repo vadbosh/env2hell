@@ -1052,22 +1052,34 @@ else
     no "--warn-only stays silent on a bare checksum" "it warned about: $quiet"
 fi
 
-# An Edit result hands the hook the whole file as `originalFile`, and Claude
-# Code keeps none of it: the transcript stores that field empty, beside
-# `contentNotInModelContext`. A credential elsewhere in the file therefore never
-# reached the session, and a warning saying it is "already in the transcript"
-# was untrue — measured on 2026-09-25, when a test fixture file drew 17 of them
-# on an edit that touched none of its keys. What the session does keep is the
-# edited region: oldString, newString, structuredPatch.
+# `originalFile` holds the whole old file, and the transcript on disk keeps it
+# more often than not. Measured on a Claude Code 2.1.294 transcript: a Write
+# over an existing file stores it in full (5 of 8 records), an Edit in 85 of
+# 138, 59 of them with `contentNotInModelContext: true`. The flag therefore
+# does not make the field empty, and --warn-only must scan it either way. It
+# was skipped until this change, which left such a credential unreported.
 edit_far="$(jq -nc --arg f "line one\ncroc --pass $HEX code\nline three" \
     '{tool_name:"Edit", tool_response:{filePath:"/x/t.sh", originalFile:$f,
+      contentNotInModelContext:true,
       oldString:"line one", newString:"line 1",
       structuredPatch:[{lines:["-line one","+line 1"]}]}}')"
-if [ -z "$(printf '%s' "$edit_far" | run_tool --warn-only)" ]; then
-    ok "--warn-only ignores an Edit's originalFile, which the session never keeps"
+if printf '%s' "$(printf '%s' "$edit_far" | run_tool --warn-only)" \
+        | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+    ok "--warn-only reads an Edit's originalFile even when contentNotInModelContext is set"
 else
-    no "--warn-only ignores an Edit's originalFile" "it warned about a file body the transcript does not hold"
+    no "--warn-only reads an Edit's originalFile" "silent about a credential the transcript keeps"
 fi
+
+write_far="$(jq -nc --arg f "line one\ncroc --pass $HEX code\nline three" \
+    '{tool_name:"Write", tool_response:{type:"update", filePath:"/x/t.sh",
+      content:"line 1", originalFile:$f}}')"
+if printf '%s' "$(printf '%s' "$write_far" | run_tool --warn-only)" \
+        | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+    ok "--warn-only reads a Write's originalFile"
+else
+    no "--warn-only reads a Write's originalFile" "silent about the overwritten file"
+fi
+
 
 edit_near="$(jq -nc --arg n "croc --pass $HEX code" \
     '{tool_name:"Edit", tool_response:{filePath:"/x/t.sh", originalFile:"",

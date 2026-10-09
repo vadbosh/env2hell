@@ -336,14 +336,12 @@ starts a rotation. Finding out now beats finding out never, and Codex keeps the
 guard either way.
 
 Claude Code wires the same mode for `Edit`, `Write` and MCP tools, whose
-results cannot be masked field by field either. One field is left out: an Edit
-result hands the hook the whole file as `originalFile`, and Claude Code keeps
-none of it — the transcript stores that field empty, beside
-`contentNotInModelContext`. Until 0.10.0 it was counted, so editing a file that
-held test keys anywhere drew "N values, already in the transcript, rotate
-them" for values that never reached the session. The edited region, which the
-session does keep, is still read through `oldString`, `newString` and
-`structuredPatch`.
+results cannot be masked field by field either. Every string in the result is
+read, `originalFile` included: that field holds the whole old file, and the
+transcript on disk keeps it in full for a `Write` over an existing file and for
+most `Edit` calls, even when `contentNotInModelContext` is set (measured on a
+Claude Code 2.1.294 transcript). Until 0.13.7 the field was skipped, so a
+credential in the old file drew no warning at all.
 
 Two tiers decide what to mask — and in `safe-env` there are three: a third one
 decides by the **name** of the variable, documented in

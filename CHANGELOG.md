@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`--warn-only` reads `originalFile` again.** The mode dropped that field on
+  the claim that the transcript stores it empty beside
+  `contentNotInModelContext`. On a Claude Code 2.1.294 transcript the claim is
+  false: a `Write` over an existing file keeps the old file in full in 5 of 8
+  records, and an `Edit` keeps it in full in 85 of 138, 59 of them with the
+  flag set. A credential in the old file sat in the transcript on disk and the
+  hook stayed silent. The flag does not predict an empty field, so it is not
+  used as a gate. Both ports.
+
 ## 0.13.7 — 2026-10-09
 
 ### Fixed

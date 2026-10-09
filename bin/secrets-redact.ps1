@@ -488,14 +488,10 @@ if ($mode -eq '--warn-only') {
         return $out
     }
 
-    # Except `originalFile`: Claude Code hands the hook the whole file there and
-    # keeps none of it — the transcript stores the field empty, beside
-    # `contentNotInModelContext`. Counting it warned about credentials that
-    # never reached the session. The edited region is still read through
-    # oldString, newString and structuredPatch.
-    if ($resp -is [psobject] -and $resp.PSObject.Properties['originalFile']) {
-        $resp = $resp | Select-Object -Property * -ExcludeProperty originalFile
-    }
+    # `originalFile` is read as well. The transcript does not always store it
+    # empty: a Write over an existing file keeps it in full, and 59 of 138 Edit
+    # records keep it in full although they carry `contentNotInModelContext`
+    # (Claude Code 2.1.294). The flag cannot gate the scan, so it is not used.
 
     $parts = @()
     if ($errText -is [string]) { $parts += $errText }
