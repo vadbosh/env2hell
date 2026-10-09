@@ -251,7 +251,13 @@ function Edit-Line([string]$Line) {
             }
             # A quoted value only has to clear Test-Name; an unquoted one is
             # also judged on length and composition.
-            $keep = if ($q) { (Test-Name $v) -or (Test-Mask $v) -or ($sch -and $v.Length -lt 8) } else { Test-KeepBare $v }
+            # A constant whose value is its own name -- `const string
+            # PdfLinkToken = "PdfLinkToken"` -- is a scheme or claim name, not
+            # a secret (F201). The name is the word the label ends.
+            $lab  = $m.Groups['head'].Value -replace '"?[ \t]*[=:][\s\S]*$', '' -replace '[ \t]+$', ''
+            $word = [regex]::Match($out.Substring(0, $m.Index), '[^\s"'']*$').Value
+            $self = ($word + $lab) -eq $v
+            $keep = if ($q) { (Test-Name $v) -or (Test-Mask $v) -or ($sch -and $v.Length -lt 8) -or $self } else { Test-KeepBare $v }
             if ($keep) { return $m.Value }            # a name, not a value
             $script:Hits++
             $m.Groups['head'].Value + $q + $sch + (Get-Mask $v) + $q

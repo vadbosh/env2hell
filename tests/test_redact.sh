@@ -747,6 +747,10 @@ check_shape mask "return x ? cfg[\"ClientSecret\"] : @\"$NEARV\";"   'a fallback
 check_shape mask "return x ? cfg[\"SubcriptionKey\"] : \"$NEARL\";"  'a long lower-case fallback under a misspelt label'
 check_shape keep "return x ? cfg[\"ClientId\"] : @\"$NEARV\";"       'a fallback under a key that names no secret'
 
+# A constant whose value is its own name is a scheme or claim name (F201).
+check_shape keep '    public const string PdfLinkToken = "PdfLinkToken";'      'a constant named by its own value'
+check_shape mask "    public const string PdfLinkToken = \"$NEARV\";"          'a constant whose value is not its name'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then

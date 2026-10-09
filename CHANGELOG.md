@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.13 — 2026-10-09
+
+### Fixed
+
+- **A constant whose value is its own name is not a secret.**
+  `public const string PdfLinkToken = "PdfLinkToken";` names an
+  authentication scheme or a claim. Its name ends in a label and its quoted
+  value clears the floor of 8, so the guard refused Codex a whole source file
+  over two such lines (F201). A quoted value equal to the identifier the label
+  ends is now kept. Same rule in `secrets-redact.ps1`; two new cases.
+
 ## 0.13.12 — 2026-10-09
 
 ### Security
