@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.10 — 2026-10-09
+
+### Fixed
+
+- **A dash inside a word is not a flag.** A label after a dash takes a value
+  separated by a space only, as `--pass X` and `-token X` do. The dash in
+  `two-pass`, `one-token` or `x-secret` matched that rule too, so the next word
+  of prose was masked. A skill digest saying "via two-pass …" was masked this
+  way, and `secrets-guard` then refused to let Codex read the file (F188).
+  Now a flag is a word that begins with a dash: `--db-pass X` is still masked.
+  Same rule in `secrets-redact.ps1`; three new cases in `tests/test_redact.sh`.
+
 ## 0.13.9 — 2026-10-09
 
 ### Fixed
