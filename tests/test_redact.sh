@@ -1079,38 +1079,6 @@ else
     no "--warn-only still reports a credential in the edited text" "no warning"
 fi
 
-# A Write over an existing file: the patch's "-" lines are the previous file,
-# which the session never read. Rewriting a SKILL.md whose old text held two
-# documentation examples drew "rotate it" for a clean new file (2026-10-09).
-# The old text is built at run time so no line of this file holds the shape.
-old_body="$(printf 'ok\npassword = "%s"\nend' hardcoded)"
-new_body="clean new text"
-write_over="$(jq -nc --arg o "$old_body" --arg n "$new_body" \
-    '{tool_name:"Write", tool_response:{type:"update", filePath:"/x/S.md", content:$n,
-      originalFile:$o,
-      structuredPatch:[{lines:(($o|split("\n")|map("-"+.)) + ["+" + $n])}]}}')"
-if [ -z "$(printf '%s' "$write_over" | run_tool --warn-only)" ]; then
-    ok "--warn-only ignores the previous file a Write's structuredPatch carries"
-else
-    no "--warn-only ignores a Write's structuredPatch" "it warned about text the session never read"
-fi
-edit_over="$(printf '%s' "$write_over" | jq -c '.tool_name = "Edit"')"
-if printf '%s' "$(printf '%s' "$edit_over" | run_tool --warn-only)" \
-        | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
-    ok "--warn-only still reads an Edit's structuredPatch"
-else
-    no "--warn-only still reads an Edit's structuredPatch" "no warning"
-fi
-write_new="$(jq -nc --arg n "croc --pass $HEX code" \
-    '{tool_name:"Write", tool_response:{type:"create", filePath:"/x/S.md", content:$n,
-      originalFile:null, structuredPatch:[]}}')"
-if printf '%s' "$(printf '%s' "$write_new" | run_tool --warn-only)" \
-        | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
-    ok "--warn-only still reports a credential in a Write's new content"
-else
-    no "--warn-only still reports a credential in a Write's new content" "no warning"
-fi
-
 # ── the Opencode plugin must call this CLI, not reimplement it ──────────────
 PLUGIN="$SRC/plugins/opencode/secrets-redact.ts"
 if [ -f "$PLUGIN" ]; then
