@@ -349,6 +349,31 @@ function Edit-Bare([string]$Text) {
     })
 }
 
+# A label somewhere on the line and a generated-looking quoted literal in a
+# value position on it -- after `:`, `=`, `??` or `return`. Code names the
+# secret in its configuration key and keeps the fallback at the far end:
+#   return cfg["ConvertApiSecret"] != null ? cfg["ConvertApiSecret"] : "<16>";
+# A Codex review printed a real 16-character key that way (F198). Same rule as
+# scrub_near() in bin/secrets-redact: 12-64 token characters with lower case,
+# upper case and a digit, not itself a name or a label.
+$LabelAny  = [regex]::new($Label, 'IgnoreCase')
+$NearValue = [regex]::new('(?<=(?:[:=]|\?\?|return)[ \t]*)"(?<v>[A-Za-z0-9+/=_.~-]{12,64})"')
+
+function Edit-Near([string]$Text) {
+    ($Text.Split([char]10) | ForEach-Object {
+        $line = $_
+        if (-not $LabelAny.IsMatch($line)) { return $line }
+        $NearValue.Replace($line, {
+            param($m)
+            $v = $m.Groups['v'].Value
+            if ($v -cmatch '[a-z]' -and $v -cmatch '[A-Z]' -and $v -match '[0-9]' -and
+                -not $LabelAny.IsMatch($v) -and -not (Test-Name $v) -and -not (Test-Mask $v)) {
+                $script:Hits++; '"' + (Get-Mask $v) + '"'
+            } else { $m.Value }
+        })
+    }) -join "`n"
+}
+
 function Edit-Text([string]$Text) {
     if ($Text -eq '') { return $Text }
     $out = $KeyBody.Replace($Text, {
@@ -359,6 +384,7 @@ function Edit-Text([string]$Text) {
     })
     $out = Edit-Line $out
     $out = Edit-Bare $out
+    $out = Edit-Near $out
     return $CredBlock.Replace($out, {
         param($m)
         $body = $m.Groups['body']

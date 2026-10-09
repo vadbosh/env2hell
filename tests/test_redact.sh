@@ -731,6 +731,16 @@ check_shape keep "via two-pass $HEX review"                     'a label after a
 check_shape keep "the x-secret $HEX header"                     'a hyphenated name that ends in a label'
 check_shape mask "tool --db-pass $HEX"                          'a long flag whose name ends in a label'
 
+# The label in a configuration key, the value at the far end of the expression:
+# a Codex review printed a real fallback key from such a line (F198). The
+# literal counts only in a value position; a key name in [] or () stays.
+NEARV="abc12d3efg4"'XYZmQ'
+check_shape mask "return cfg[\"ConvertApiSecret\"] != null ? cfg[\"ConvertApiSecret\"] : \"$NEARV\";" 'a fallback literal after a ternary'
+check_shape mask "string secret = Env(\"X\") ?? \"$NEARV\";"   'a fallback literal after ??'
+check_shape keep 'var key = cfg["ClientSecretV2"];'               'a key name that carries a label'
+check_shape keep "var name = \"$NEARV\";"                         'a literal on a line with no label'
+check_shape keep 'token = Get("ApiVersion2Beta");'                'a key name passed as an argument'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then

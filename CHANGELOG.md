@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.11 — 2026-10-09
+
+### Security
+
+- **A fallback literal far from its label is masked.** Code names a secret in
+  its configuration key and keeps a hard-coded fallback at the end of the
+  expression: `cfg["ConvertApiSecret"] != null ? cfg["ConvertApiSecret"] :
+  "<16 characters>"`. The label rule wants the value right after the label, so
+  a Codex review printed a real key from such a line into its transcript
+  (F198). Now, on a line that carries a label, a quoted literal in a value
+  position — after `:`, `=`, `??` or `return` — is masked when it has 12–64
+  token characters with lower case, upper case and a digit. A key name in
+  `cfg["…"]` or `Get("…")` stays readable. Same rule in `secrets-redact.ps1`;
+  five new cases in `tests/test_redact.sh`.
+
 ## 0.13.10 — 2026-10-09
 
 ### Fixed
