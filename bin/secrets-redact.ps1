@@ -160,6 +160,9 @@ $NameShapes = @(
     '^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*-v?[0-9]+([.][0-9]+)+(-[a-z0-9.]+)?$'  # victoria-metrics-agent-0.30.0
     '^(?!.*KEY)-+BEGIN( [A-Z]+)*-*$'               # a bare PEM header, no key material
     '^[a-z]+(_[a-z]+)+$'                    # aws_secrets_manager
+    # A placeholder in angle brackets: words with a space, or one lower-case or
+    # one upper-case word. Same rule and reason as is_name() in the POSIX file.
+    '^<([A-Za-z0-9_.:-]* [A-Za-z0-9 _.:-]*|[a-z]+([_-][a-z]+)*|[A-Z]+(_[A-Z]+)*)>$'  # <your-token>
 )
 
 function Test-Name([string]$Value) {

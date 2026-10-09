@@ -350,6 +350,15 @@ check_shape mask "\"Authorization\": \"Bearer $BEARER\""         'a bearer token
 check_shape keep '"Authorization": "Bearer ..."'                 'a JSON placeholder after the scheme'
 check_shape keep '"Authorization": "Bearer <token>"'             'the same, in angle brackets'
 
+# A placeholder in angle brackets after a label, quoted. Before 0.13.9 the
+# quoted floor of 8 masked it: a review report came back with
+# bearerToken="<REDACTED:17>" for a value that was a description.
+check_shape keep 'bearerToken="<22-char literal>"'                'a placeholder with a space in angle brackets'
+check_shape keep "password='<your-password>'"                     'a lower-case placeholder in angle brackets'
+check_shape keep 'api_key: "<YOUR_API_KEY>"'                      'an upper-case placeholder in angle brackets'
+check_shape mask "password=\"<Xy7${BEARER}>\""                    'a mixed-case password in angle brackets'
+check_shape mask "token: \"<${BEARER}Q>\""                        'a generated token in angle brackets'
+
 got="$(hook_out "\"Authorization\": \"Bearer $BEARER\"")"
 if grep -qF -- '"Authorization": "Bearer <REDACTED:' <<< "$got"; then
     ok "keeps the scheme word readable inside JSON quotes"

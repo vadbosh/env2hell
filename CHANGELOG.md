@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.9 — 2026-10-09
+
+### Fixed
+
+- **A placeholder in angle brackets is not masked.** A quoted value after a
+  label is masked when it has 8 characters or more, so
+  `bearerToken="<22-char literal>"` in a review report came back as
+  `bearerToken="<REDACTED:17>"`. A value in angle brackets now stays when it
+  holds words with a space, or one lower-case or one upper-case word joined by
+  `-` or `_`: `<your-password>`, `<YOUR_API_KEY>`. A generated value in
+  brackets has no space and mixes case or digits, so it is still masked. Both
+  ports.
+
 ## 0.13.8 — 2026-10-09
 
 ### Fixed
