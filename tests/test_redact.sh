@@ -534,6 +534,56 @@ PY
     else
         no "a later run sweeps what a killed one left" "$left left, $after still there"
     fi
+
+    # The parent is used only when it is this user's own directory. Someone
+    # else's /tmp/secrets-redact, or a symlink in its place, would otherwise hold
+    # every run directory with the payload in it. A killed run shows where its
+    # directory was made, since the trap that removes it never runs.
+    killed_run () {                     # killed_run [VAR=value...] — one run, killed mid-payload
+        # shellcheck disable=SC2016  # $0 and $1 belong to the inner sh
+        ( env "$@" sh -c 'exec "$0" < "$1"' "$TOOL" "$big" >/dev/null 2>&1 ) &
+        krun=$!
+        sleep 1
+        pkill -9 -P "$krun" 2>/dev/null; kill -9 "$krun" 2>/dev/null
+        wait "$krun" 2>/dev/null
+    }
+
+    link_home="$scratch_home/link"
+    mkdir -p "$link_home/elsewhere"
+    ln -s "$link_home/elsewhere" "$link_home/secrets-redact"
+    killed_run NO_SERVER=1 TMPDIR="$link_home"
+    inside="$(find "$link_home/elsewhere" -mindepth 1 | wc -l)"
+    beside="$(find "$link_home" -maxdepth 1 -name 'secrets-redact.*' -type d | wc -l)"
+    if [ "$inside" -eq 0 ] && [ "$beside" -ge 1 ]; then
+        ok "a symlinked parent is never written through"
+    else
+        no "a symlinked parent is never written through" "$inside inside the target, $beside beside it"
+    fi
+
+    if [ "$(id -u)" = 0 ]; then
+        foreign_home="$scratch_home/foreign"
+        mkdir -p "$foreign_home/secrets-redact"
+        chown 65534 "$foreign_home/secrets-redact"
+        chmod 777 "$foreign_home/secrets-redact"
+        killed_run NO_SERVER=1 TMPDIR="$foreign_home"
+        inside="$(find "$foreign_home/secrets-redact" -mindepth 1 | wc -l)"
+        beside="$(find "$foreign_home" -maxdepth 1 -name 'secrets-redact.*' -type d | wc -l)"
+        if [ "$inside" -eq 0 ] && [ "$beside" -ge 1 ]; then
+            ok "a parent owned by another user is never used"
+        else
+            no "a parent owned by another user is never used" "$inside inside it, $beside beside it"
+        fi
+    fi
+
+    xdg_home="$scratch_home/xdg"
+    mkdir -p "$xdg_home"
+    chmod 700 "$xdg_home"
+    killed_run -u TMPDIR NO_SERVER=1 XDG_RUNTIME_DIR="$xdg_home"
+    if [ -n "$(find "$xdg_home/secrets-redact" -maxdepth 1 -name 'run.*' -type d 2>/dev/null)" ]; then
+        ok "with no TMPDIR, the run goes to XDG_RUNTIME_DIR"
+    else
+        no "with no TMPDIR, the run goes to XDG_RUNTIME_DIR" "nothing under $xdg_home/secrets-redact"
+    fi
 fi
 
 # ── the count in the warning, and the bytes on the way out ──────────────────

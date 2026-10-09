@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.7 — 2026-10-09
+
+### Fixed
+
+- **The redactor no longer writes into a scratch directory another user
+  owns.** Each run keeps the payload in a run directory under
+  `$TMPDIR/secrets-redact`, and in a shared `/tmp` any user could create that
+  directory first. The redactor then failed to make it private, ignored the
+  failure, and made every run directory inside it. Now the redactor uses that
+  directory only when it is not a symlink and belongs to the current user.
+  Otherwise the run gets a new private directory next to it. With no `TMPDIR`
+  set, `$XDG_RUNTIME_DIR` is used before `/tmp` when it belongs to the current
+  user. The PowerShell port writes no scratch files and is unchanged.
+
 ## 0.13.6 — 2026-10-09
 
 ### Fixed
