@@ -492,13 +492,22 @@ if (-not [string]::IsNullOrWhiteSpace($readPath)) {
 $dumpWord = '(env|printenv|set|declare|typeset|history)'
 # `rtk run` / `rtk proxy` take the command as one quoted argument, the same
 # shape as `bash -c`.
-$payload  = '(-c|-e|eval|rtk\s+(run|proxy))\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
+# The -c has to belong to something that runs it: `echo -c set` prints two
+# words and was denied (F210). Flags may be joined, so `bash -lc env` counts;
+# it passed before, because `-lc` does not contain `-c`.
+$runner   = '(^|[\s/"''])(sh|bash|zsh|dash|ksh|mksh|ash|fish|busybox|su|script)(\s+-\S+)*\s+-[A-Za-z]*[ce]'
+$payload  = '(' + $runner + '|eval|rtk\s+(run|proxy))\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
 $idiom    = '(os\.environ|process\.env|%ENV|ENV\.to_h|ENV\.to_hash|ENV\.each)'
 # Reading one variable is not a dump, the same as ENVIRON["HOME"] below:
 # `os.environ["HOME"]`, `os.environ.get(`, `process.env.HOME`,
 # `process.env["HOME"]`. Taken out before $idiom is tested — a `printf` that
 # wrote a Python line reading one variable into a file was denied as a dump.
 $oneVar   = '(os\.environ\s*(\[|\.get\s*\()|process\.env\s*(\.[A-Za-z_$]|\[))'
+# In a search the idiom is a pattern, not code: `rg -n os.environ src/` read
+# nothing and was denied. Unless the search line can run something itself —
+# a substitution, `rg --pre`, `git grep -O` / `--open-files-in-pager`.
+$search   = '^\s*(rtk\s+)?(\S*/)?(rg|grep|egrep|fgrep|ag|ack|git\s+grep)(\s|$)'
+$runs     = '(\$\(|`|<\(|--pre|--open-files-in-pager|\s-O)'
 # awk and jq carry the whole environment as a value of their own. Looping over
 # ENVIRON prints every pair; ENVIRON["HOME"] reads one and stays allowed. In jq
 # the word has to stand alone: `.env` is a key, `env.HOME` and `$ENV.HOME` read
@@ -514,7 +523,8 @@ $subst    = '\$\(\s*' + $dumpWord + '\s*(\)|\|)'
 foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
     if ($rawSub -cmatch $payload -or $rawSub -cmatch $subst -or
-        ($rawSub -creplace $oneVar, 'ONEVAR') -cmatch $idiom) {
+        (($rawSub -creplace $oneVar, 'ONEVAR') -cmatch $idiom -and
+         -not ($rawSub -cmatch $search -and $rawSub -cnotmatch $runs))) {
         Deny $EnvMessage
     }
     if ($rawSub -cmatch $awkEnv -or ($rawSub -cmatch $jqCmd -and $rawSub -cmatch $jqEnv)) {

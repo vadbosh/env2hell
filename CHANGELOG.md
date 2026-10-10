@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.13.15 — 2026-10-10
+
+### Fixed
+
+- **A search for the idiom is not a dump.** `rg -n 'environ|%ENV' tests/`
+  read nothing and was denied, because the idiom rule matched the search
+  pattern. A sub-command that is `rg`, `grep`, `egrep`, `fgrep`, `ag`, `ack`
+  or `git grep` now passes, unless it can run code itself: `$(…)`, a
+  backtick, `<(…)`, `rg --pre`, `git grep -O` or `--open-files-in-pager`.
+  A pipeline into `python3 -c` is still checked as its own sub-command. Same
+  rule in `secrets-guard.ps1`; seven new cases.
+- **`-c` has to belong to a shell.** `echo -c set` was denied as a dump,
+  because any `-c` or `-e` followed by a dump word counted (F210). It now
+  counts only after `sh`, `bash`, `zsh`, `dash`, `ksh`, `mksh`, `ash`,
+  `fish`, `busybox`, `su` or `script`, with other flags allowed in between.
+
+### Security
+
+- **`bash -lc env` is denied.** Joined flags did not count: `-lc` holds no
+  `-c`, so a login shell running `env` passed. The flag may now carry other
+  letters before the `c`. Same rule in `secrets-guard.ps1`; seven new cases
+  for this and the entry above.
+
 ## 0.13.14 — 2026-10-10
 
 ### Fixed

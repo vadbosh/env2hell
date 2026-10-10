@@ -431,6 +431,14 @@ check 2 'perl -e "print %ENV"'
 check 2 'ruby -e "puts ENV.to_h"'
 check 0 'bash -c "echo env"'
 check 0 'sh -c "set -e; make"'
+# The -c has to belong to a shell (F210); joined flags count.
+check 0 'echo -c set'
+check 0 'echo -e env'
+check 2 'bash -lc env'
+check 2 '/bin/bash -c env'
+check 2 'zsh -c "printenv"'
+check 2 'su -c env'
+check 2 'script -qc env'
 check 0 'python3 -c "print(1+1)"'
 # Reading one variable is not a dump (F208): a printf writing a Python line
 # into a file was denied. The whole-environment forms stay denied.
@@ -441,6 +449,15 @@ check 0 'node -e "console.log(process.env[\"HOME\"])"'
 check 2 'python3 -c "import os; print(os.environ.items())"'
 check 2 'python3 -c "import os; print(dict(os.environ), os.environ[\"HOME\"])"'
 check 2 'node -e "console.log(Object.keys(process.env))"'
+# In a search the idiom is a pattern. A search that can run code is still
+# checked, and so is the next step of a pipeline.
+check 0 "rg -n 'os.environ' src/"
+check 0 'grep -rn "process.env" .'
+check 0 "git grep -n '%ENV'"
+check 0 "cd /x; rg -n 'environ|%ENV|ENV\.each' tests/"
+check 2 'rg x $(python3 -c "import os; print(os.environ)")'
+check 2 'rg -n foo . | python3 -c "import os; print(os.environ)"'
+check 2 "git grep -O'perl -e \"print %ENV\"' x"
 # `rtk run` / `rtk proxy` run the rest of the line with no filter: one wrapper
 # of two words, and a quoted payload the same shape as `bash -c`.
 check 2 'rtk run env'
