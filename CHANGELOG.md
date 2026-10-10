@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.18 — 2026-10-10
+
+### Security
+
+- **Spring key names and a bare `key:` are masked.** A security review read a
+  Spring `application.yaml` through `secrets-redact --filter`, and eight values
+  came through: `awsSecretKey`, `secretStripeKey` and `secret-key` were not
+  labels, because the label had to end where the name ended, and a 40-digit hex
+  value under `key:` had no label at all (F228, F220). A label with a `key`
+  tail is now the same label. A key named `key`, or ending in it, masks its
+  value when the value reads as generated: 32 or more hex digits, or 20 or
+  more characters with lower case, upper case and a digit and no dot or space —
+  a Kubernetes `key: app.kubernetes.io/name` stays readable. On that file the
+  masked lines went from 12 to 20, exactly the eight; over 1019 ordinary
+  YAML, JSON, Markdown and Terraform files the only new masks were two example
+  secrets. Same rules in `secrets-redact.ps1`; nine new cases.
+
 ## 0.13.17 — 2026-10-10
 
 ### Tests

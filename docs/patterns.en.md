@@ -135,6 +135,7 @@ So in output the frame is rebuilt from a label on the same line:
 | `password=`, `secret=`, `api_key=` | `DB_URL=…?password=<REDACTED:24>` |
 | `TOKEN:`, `Authorization: Bearer` | `Authorization: Bearer <REDACTED:180>` |
 | plurals and `-`/`_` spellings | `access_key`, `client-secret`, `credentials` |
+| a label with a `key` tail | `awsSecretKey`, `secretStripeKey`, `secret-key` |
 | a value glued to its flag, or after a colon | `mysql -p<REDACTED:16>`, `redis-cli -a <REDACTED:16>`, `-U admin%<REDACTED:16>`, `curl -u admin:<REDACTED:16>` |
 
 The last row is four client idioms with no separator at all between the flag and
@@ -187,6 +188,13 @@ prints it. A backup name with its timestamp, such as
 `SKILL.md.bak.20261001-191831`, stays readable too. A password without one of the three classes, such as lower-case
 letters and digits only, is not caught. That shape is every hash and every
 generated id.
+
+A key named only `key`, or one ending in it with no label before, such as
+`licenseKey`, is not a label. Every Kubernetes selector prints
+`key: app.kubernetes.io/name`. Here the value decides, and it is masked in two
+cases: 32 or more hex digits, or 20 or more characters with a lower-case
+letter, an upper-case letter and a digit and no dot or space. So `key: <REDACTED:40>` under
+a CRM block is masked, and the selector stays readable.
 
 ## Testing a format
 

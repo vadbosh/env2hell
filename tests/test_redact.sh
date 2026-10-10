@@ -772,6 +772,19 @@ check_shape mask "token: $UUID"                                               'a
 check_shape mask "{\"apiKey\": \"$UUID\"}"                                    'a quoted UUID right after a label'
 check_shape mask "string secret = Env(\"X\") ?? \"${UUID%-*}-ABCDEF123456\";"  'a fallback that is not a lower-case UUID'
 
+# Spring names with a key-shaped tail, and a bare `key:` (F228). Generated
+# values of the same shape as the ones that went through.
+B40="Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z""Ab7cDe0f"
+check_shape mask "  awsSecretKey: $B40"                  'a label with a Key tail: awsSecretKey'
+check_shape mask "      secretStripeKey: $B40"           'a label with a word and Key after it'
+check_shape mask "    secret-key: $B40"                  'secret-key in YAML'
+check_shape mask "    key: $HEX$HEX"                     'a bare key: with 64 hex digits'
+check_shape mask "  licenseKey: \"$B40\""                'a name ending in Key, generated value'
+check_shape keep "  - key: app.kubernetes.io/name"       'a Kubernetes selector key'
+check_shape keep "    key: abc123"                       'a bare key: with a short value'
+check_shape keep "    sort_key: created_at"              'a name ending in key, a name for value'
+check_shape keep "    key: ${HEX:0:24}"                  'a bare key: with 24 hex digits, below the floor'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then

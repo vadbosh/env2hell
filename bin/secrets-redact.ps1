@@ -95,7 +95,9 @@ $Label = '(?<dash>(?=-)(?<=(?:^|[\s"''])(?:-[^\s"'']*)?)--?)?(pass|passwd|passwo
          # that also describe a git SHA and half the identifiers in ordinary
          # output. The variable name is the only reliable signal.
          'hw[-_]?(access|secret)([-_]?key)?|huaweicloud?[-_]?[a-z_]*key|' +
-         'os[-_](access|secret)[-_]?key)s?'
+         # A label with a key-shaped tail is the same label: awsSecretKey,
+         # secretStripeKey, secret-key (F228), as in bin/secrets-redact.
+         'os[-_](access|secret)[-_]?key)s?([a-z0-9]*[-_.]?key)?'
 # 16 is the floor: an md5 is 32 and a git SHA is 40, so length alone can never
 # decide this — only the label can.
 $Value = '[A-Za-z0-9+/=_.~-]{16,}'
@@ -391,6 +393,27 @@ function Edit-Near([string]$Text) {
     }) -join "`n"
 }
 
+# A configuration key that is only "key", or ends in it with no label before
+# (`key:`, `licenseKey:`), is too common a word to be a label — every Kubernetes
+# selector prints `key: app.kubernetes.io/name`. The value decides: 32 or more
+# hex digits, or 20 or more characters with lower case, upper case and a digit
+# and no dot or space (F228). Same rule as scrub_barekey() in bin/secrets-redact.
+$BareKey = [regex]::new('^(?<head>[ \t]*(?:-[ \t]+)?["'']?[A-Za-z0-9_.-]*key["'']?[ \t]*[:=][ \t]*["'']?)(?<v>.*?)(?<tail>["'']?[ \t\r]*)$', 'IgnoreCase')
+
+function Edit-BareKey([string]$Text) {
+    ($Text.Split([char]10) | ForEach-Object {
+        $m = $BareKey.Match($_)
+        if (-not $m.Success) { return $_ }
+        $v = $m.Groups['v'].Value
+        if ($v -eq '' -or (Test-Mask $v)) { return $_ }
+        if ($v -match '^[0-9A-Fa-f]+$') { if ($v.Length -lt 32) { return $_ } }
+        elseif ($v.Length -lt 20 -or $v -notmatch '^[A-Za-z0-9+/=_-]+$' -or
+                $v -cnotmatch '[a-z]' -or $v -cnotmatch '[A-Z]' -or $v -notmatch '[0-9]') { return $_ }
+        $script:Hits++
+        $m.Groups['head'].Value + (Get-Mask $v) + $m.Groups['tail'].Value
+    }) -join "`n"
+}
+
 function Edit-Text([string]$Text) {
     if ($Text -eq '') { return $Text }
     $out = $KeyBody.Replace($Text, {
@@ -402,6 +425,7 @@ function Edit-Text([string]$Text) {
     $out = Edit-Line $out
     $out = Edit-Bare $out
     $out = Edit-Near $out
+    $out = Edit-BareKey $out
     return $CredBlock.Replace($out, {
         param($m)
         $body = $m.Groups['body']
