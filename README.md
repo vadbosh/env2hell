@@ -216,6 +216,16 @@ something you run when you have a reason to, not something the assistant calls.
 ## Verify
 
 ```bash
+./tests/run_all.sh             # every suite below and the parity suites, one summary
+./tests/run_all.sh guard redact               # only the suites with these words in the name
+ONLY='UUID' ./tests/run_all.sh redact         # only the cases whose label matches
+```
+
+`run_all.sh` runs as many suites at once as there are CPUs, the longest first.
+`ONLY` works in the guard and redactor suites. Use it while editing a rule,
+and run everything before a release. One suite at a time:
+
+```bash
 ./tests/test_guard.sh          # the POSIX guard
 ./tests/test_redact.sh         # the redactor: patterns, result shapes, size
 ./tests/test_safe_env.sh       # safe-env

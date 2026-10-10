@@ -52,21 +52,31 @@ tmp="$(mktemp -d)" || exit 2
 trap 'rm -rf "${tmp:?}"' EXIT
 
 # payload <command-string> — one line of JSON, appended to the payload file
-payload () {
-    # The python program is single-quoted on purpose: its $ and quotes belong to
-    # python, not to the shell.
-    # shellcheck disable=SC2016
-    printf '%s' "$1" | python3 -c \
-        'import json,sys; print(json.dumps({"tool_input":{"command":sys.stdin.read()}}))'
-}
+# shellcheck source=json.sh
+. "$SRC/tests/json.sh"
+payload () { cmd_payload "$1"; }
 
 # posix_run <payload-file> — one exit code per line, in order
-posix_run () {
+# The file is cut into PARTS contiguous pieces run side by side and joined back
+# in order: one guard process per line made this the slowest suite, at about
+# 0.13 s a line over some 520 lines.
+posix_run_one () {
     while IFS= read -r p; do
         [ -z "$p" ] && continue
         printf '%s' "$p" | "$GUARD" >/dev/null 2>&1
         echo $?
     done < "$1"
+}
+posix_run () {
+    local parts="${PARTS:-4}" n k
+    n=$(wc -l < "$1")
+    for k in $(seq 1 "$parts"); do
+        awk -v k="$k" -v per="$(( (n + parts - 1) / parts ))" \
+            'NR > (k - 1) * per && NR <= k * per' "$1" > "$1.part$k"
+        posix_run_one "$1.part$k" > "$1.rc$k" &
+    done
+    wait
+    for k in $(seq 1 "$parts"); do cat "$1.rc$k"; done
 }
 
 # port_run <payload-file> — the same, from a single pwsh process

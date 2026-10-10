@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.17 — 2026-10-10
+
+### Tests
+
+- **`tests/run_all.sh` runs every suite and prints one summary.** As many
+  suites at once as there are CPUs, the longest first; exit 1 if any suite
+  does not report `failed 0`. Thirteen suites one after another took about
+  16 minutes of process time; the run takes about two minutes on four CPUs.
+  All thirteen at once made the guard's own 10-second size cases time out
+  under the PowerShell port, so the limit is part of the tool.
+- **`ONLY=<regex>`** runs only the matching cases of the guard and redactor
+  tables, for use while editing a rule.
+- **No `python3` start per case.** `tests/json.sh` builds the hook payload in
+  the shell, with `jq` for the rare control character; about 800 starts of
+  50 ms each are gone from the guard suites.
+- **`test_parity_guard.sh` runs the POSIX guard over its corpus in four
+  pieces at once**: 116 s alone before, 35 s now.
+
 ## 0.13.16 — 2026-10-10
 
 ### Fixed

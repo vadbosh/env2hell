@@ -12,6 +12,8 @@
 set -uo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=json.sh
+. "$SRC/tests/json.sh"
 GUARD="$SRC/bin/secrets-guard"
 RUNNER=""
 
@@ -52,6 +54,7 @@ trap close_server EXIT
 
 pass=0
 fail=0
+skip=0
 
 # When set, every check runs under `timeout <seconds>`. Exit 124 then means the
 # guard did not finish, which for a PreToolUse hook means the call went through
@@ -63,11 +66,10 @@ CHECK_TIMEOUT=""
 # legitimate case and an illegible line.
 check() {
     local want="$1" cmd="$2" label="${3:-$2}" got payload
-    # The python program is single-quoted on purpose: its $ and quotes belong
-    # to python, not to the shell.
-    # shellcheck disable=SC2016
-    payload="$(printf '%s' "$cmd" | python3 -c \
-        'import json,sys; print(json.dumps({"tool_input":{"command":sys.stdin.read()}}))')"
+    # ONLY=<regex> runs just the cases whose label matches — while editing a
+    # rule; the full run belongs before a release.
+    if [ -n "${ONLY:-}" ] && ! [[ $label =~ $ONLY ]]; then skip=$((skip + 1)); return; fi
+    payload="$(cmd_payload "$cmd")"
     # $RUNNER is a command plus its flags and has to split into words; so does
     # the optional timeout prefix.
     # shellcheck disable=SC2086
@@ -680,5 +682,6 @@ check_prompt allow "write to user@$PE_DIR/tg.txt"         'user@host is not an a
 check_prompt allow "@$PE_DIR/missing.txt"                 '@path that does not exist'
 check_prompt allow "no attachment in this prompt"          'a prompt with no @'
 echo
+[ "$skip" -gt 0 ] && printf 'skipped %d (ONLY=%s)\n' "$skip" "$ONLY"
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

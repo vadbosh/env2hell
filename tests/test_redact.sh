@@ -97,7 +97,16 @@ run_tool () {
 
 pass=0
 fail=0
+skip=0
 ok () { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
+# ONLY=<regex> runs just the table cases (check_labelled, check_glued,
+# check_shape, check_block) whose arguments match — while editing a rule. The
+# one-off checks between them still run; the full run belongs before a release.
+only () {
+    [ -z "${ONLY:-}" ] && return 0
+    [[ "$*" =~ $ONLY ]] && return 0
+    skip=$((skip + 1)); return 1
+}
 no () { fail=$((fail + 1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
 # A hex run of exactly md5 length: a password in one test, a checksum in the
@@ -146,6 +155,7 @@ fi
 # Assert all three things: a replacement was issued, the value is gone, and the
 # label survived it. Any one of them alone can pass on a broken hook.
 check_labelled () {                     # <line> <label that must survive>
+    only "$@" || return 0
     local line="$1" label="$2" out
     out="$(hook_out "$line")"
     if [ -z "$out" ]; then
@@ -232,6 +242,7 @@ check_labelled "HUAWEICLOUD_SECRET_KEY=$HEX" 'HUAWEICLOUD_SECRET_KEY='
 # the command that owns it, because the flag letters mean other things
 # elsewhere — `ls -p`, `grep -a`, `sort -u` must stay untouched.
 check_glued () {                        # <line> <text that must survive>
+    only "$@" || return 0
     local line="$1" keep="$2" out
     out="$(printf '%s\n' "$line" | run_tool --filter)"
     if grep -q "$HEX" <<< "$out"; then
@@ -290,6 +301,7 @@ verdict () {                            # verdict <line> -> "mask" | "keep"
 }
 
 check_shape () {                        # <mask|keep> <line> <what it is>
+    only "$@" || return 0
     local want="$1" line="$2" what="$3" got
     got="$(verdict "$line")"
     if [ "$got" = "$want" ]; then
@@ -385,6 +397,7 @@ check_shape keep '{"password_field": "user_password"}'           'the JSON spell
 # BEGIN text — which made the result *look* handled while the key itself went
 # through underneath it.
 check_block () {                        # <what it is> <line…>
+    only "$@" || return 0
     local what="$1"; shift
     local text out
     text="$(printf '%s\n' "$@")"
@@ -1238,5 +1251,6 @@ else
        "the provider list has drifted; run: diff <(grep '^  RE = ' bin/safe-env) <(grep '^  RE = ' bin/secrets-redact)"
 fi
 
+[ "$skip" -gt 0 ] && printf '\nskipped %d (ONLY=%s)' "$skip" "$ONLY"
 printf '\npassed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
