@@ -354,6 +354,9 @@ function Edit-Bare([string]$Text) {
             ($v -match '^[A-Za-z_][A-Za-z0-9_.-]*=') -or $v.EndsWith(':') -or ($v -match '\([0-9]+\)$') -or
             ($v -match '\.[A-Za-z][A-Za-z0-9]{0,5}([-:][0-9]+)*[-:]?$') -or
             ($v -match '\.[A-Za-z][A-Za-z0-9]*\.[0-9]+([-_][0-9]+)*$') -or
+            # A statement of code alone on its line (F241), as in bin/secrets-redact.
+            ($v -match '^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)+\([^()]*\);?$') -or
+            ($v -match '^[A-Za-z_$][A-Za-z0-9_$]*\([^()]*\);$') -or
             (Test-Name $v) -or (Test-Mask $v)
         if ($keep) { return $m.Value }
         $script:Hits++

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.19 — 2026-10-10
+
+### Fixed
+
+- **A line of code is not a password.** The rule for a value alone on its line
+  masked `connection.setConnectTimeout(5000);`: one token with lower case,
+  upper case and a digit. A security guide lost two lines of its example, and
+  the guard refused to print it (F241). A qualified call (`obj.method(…)`,
+  with or without `;`) and any call ending in `;` now stay readable; a
+  password with parentheses in the middle is still masked. Same rule in
+  `secrets-redact.ps1`; three new cases.
+
 ## 0.13.18 — 2026-10-10
 
 ### Security

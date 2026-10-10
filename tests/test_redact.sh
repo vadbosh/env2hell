@@ -519,6 +519,10 @@ check_shape keep "Section2:"                       "a heading"
 check_shape keep "ls(1)"                           "a manual reference"
 check_shape keep "NAME=Val9ue"                     "an assignment, decided by the labelled rule"
 check_shape keep "2026-10-08"                      "a date"
+# A statement of code alone on its line is not a password (F241).
+check_shape keep "        connection.setConnectTimeout(5000);"   "a qualified Java call"
+check_shape keep "setReadTimeout(30000);"                        "a plain call ending in ;"
+check_shape mask "$(printf %s%s Tr0u "b(4d)or3")"               "a password with parentheses, not a call"
 # The block ends at the first line as shallow as its parent. `other:` is a
 # sibling of `userpass:`, not a child, and an unlabelled sibling stays as it is.
 check_shape keep "$(printf 'auth:\n  userpass:\n    bosh: short\n  other: %s' "$YPW")" \
