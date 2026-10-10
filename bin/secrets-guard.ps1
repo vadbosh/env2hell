@@ -494,6 +494,11 @@ $dumpWord = '(env|printenv|set|declare|typeset|history)'
 # shape as `bash -c`.
 $payload  = '(-c|-e|eval|rtk\s+(run|proxy))\s*["'']?\s*' + $dumpWord + '\s*["'']?\s*$'
 $idiom    = '(os\.environ|process\.env|%ENV|ENV\.to_h|ENV\.to_hash|ENV\.each)'
+# Reading one variable is not a dump, the same as ENVIRON["HOME"] below:
+# `os.environ["HOME"]`, `os.environ.get(`, `process.env.HOME`,
+# `process.env["HOME"]`. Taken out before $idiom is tested — a `printf` that
+# wrote a Python line reading one variable into a file was denied as a dump.
+$oneVar   = '(os\.environ\s*(\[|\.get\s*\()|process\.env\s*(\.[A-Za-z_$]|\[))'
 # awk and jq carry the whole environment as a value of their own. Looping over
 # ENVIRON prints every pair; ENVIRON["HOME"] reads one and stays allowed. In jq
 # the word has to stand alone: `.env` is a key, `env.HOME` and `$ENV.HOME` read
@@ -508,7 +513,8 @@ $subst    = '\$\(\s*' + $dumpWord + '\s*(\)|\|)'
 
 foreach ($rawSub in $rawSubs) {
     if ([string]::IsNullOrWhiteSpace($rawSub)) { continue }
-    if ($rawSub -cmatch $payload -or $rawSub -cmatch $subst -or $rawSub -cmatch $idiom) {
+    if ($rawSub -cmatch $payload -or $rawSub -cmatch $subst -or
+        ($rawSub -creplace $oneVar, 'ONEVAR') -cmatch $idiom) {
         Deny $EnvMessage
     }
     if ($rawSub -cmatch $awkEnv -or ($rawSub -cmatch $jqCmd -and $rawSub -cmatch $jqEnv)) {

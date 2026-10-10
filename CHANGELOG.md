@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.14 — 2026-10-10
+
+### Fixed
+
+- **Reading one environment variable in Python or Node is not a dump.** The
+  interpreter idiom rule denied any sub-command that contained
+  `os.environ` or `process.env`, so a `printf` that wrote
+  `G = os.environ["G"]` into a file was refused as "bare env" (F208). One
+  read — `os.environ[…]`, `os.environ.get(…)`, `process.env.NAME`,
+  `process.env[…]` — is now taken out before the idiom is tested, the same
+  way `ENVIRON["HOME"]` already passed for awk. `print(os.environ)`,
+  `os.environ.items()`, `Object.keys(process.env)` stay denied. Same rule in
+  `secrets-guard.ps1`; seven new cases.
+
 ## 0.13.13 — 2026-10-09
 
 ### Fixed

@@ -432,6 +432,15 @@ check 2 'ruby -e "puts ENV.to_h"'
 check 0 'bash -c "echo env"'
 check 0 'sh -c "set -e; make"'
 check 0 'python3 -c "print(1+1)"'
+# Reading one variable is not a dump (F208): a printf writing a Python line
+# into a file was denied. The whole-environment forms stay denied.
+check 0 "printf 'import os\nG = os.environ[\"G\"]\n' > config.py"
+check 0 'python3 -c "import os; print(os.environ.get(\"HOME\"))"'
+check 0 'node -e "console.log(process.env.HOME)"'
+check 0 'node -e "console.log(process.env[\"HOME\"])"'
+check 2 'python3 -c "import os; print(os.environ.items())"'
+check 2 'python3 -c "import os; print(dict(os.environ), os.environ[\"HOME\"])"'
+check 2 'node -e "console.log(Object.keys(process.env))"'
 # `rtk run` / `rtk proxy` run the rest of the line with no filter: one wrapper
 # of two words, and a quoted payload the same shape as `bash -c`.
 check 2 'rtk run env'
