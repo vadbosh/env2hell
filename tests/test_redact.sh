@@ -751,6 +751,14 @@ check_shape keep "return x ? cfg[\"ClientId\"] : @\"$NEARV\";"       'a fallback
 check_shape keep '    public const string PdfLinkToken = "PdfLinkToken";'      'a constant named by its own value'
 check_shape mask "    public const string PdfLinkToken = \"$NEARV\";"          'a constant whose value is not its name'
 
+# A UUID far from the label is an id (F215); right after a label it is masked.
+UUID="0f8fad5b-d9cb-469f-a165-70867728950e"
+check_shape keep "{\"session\": \"$UUID\", \"text\": \"the token is checked\"}" 'a session id on a line that mentions a token'
+check_shape keep "{\"id\": \"$UUID\", \"note\": \"credentials rotated\"}"     'a row id on a line that mentions credentials'
+check_shape mask "token: $UUID"                                               'a UUID right after a label'
+check_shape mask "{\"apiKey\": \"$UUID\"}"                                    'a quoted UUID right after a label'
+check_shape mask "string secret = Env(\"X\") ?? \"${UUID%-*}-ABCDEF123456\";"  'a fallback that is not a lower-case UUID'
+
 # The counterpart: a bare SHA must still come through, or every `git rev-parse`
 # in the session turns into <REDACTED:40>.
 if [ "$(hook_out "$SHA")" = "" ] || [ "$(hook_out "$SHA")" = "$SHA" ]; then

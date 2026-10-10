@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.16 — 2026-10-10
+
+### Fixed
+
+- **A UUID far from a label is an id, not a credential.** The fallback rule
+  of 0.13.11 masked a quoted 16-64 character literal anywhere on a line that
+  mentioned a label, so `{"session": "<uuid>", "text": "the token is
+  checked"}` lost its session id, and secrets-guard refused to print the
+  findings ledger (F215). A canonical lower-case UUID is now left alone by
+  that rule. Right after a label (`token: <uuid>`, `"apiKey": "<uuid>"`) it
+  is still masked: some API keys are UUIDs. Same rule in
+  `secrets-redact.ps1`; five new cases.
+- **`secrets-redact.ps1` no longer takes minutes on a long line.** The
+  lookbehind of the `--flag` branch in the label pattern ran at every
+  position and scanned back to the start of the line; the credential-block
+  pattern backtracks through every position of its leading run, so the time
+  grew with the square of the line length — 12 s at 20 KB, a 200 KB line
+  never finished, and `tests/test_redact.sh --pwsh` hung on it (F219). The
+  lookbehind now runs only where a dash stands: 53 ms at 20 KB, 2 s for the
+  whole 200 KB hook call.
+
 ## 0.13.15 — 2026-10-10
 
 ### Fixed

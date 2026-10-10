@@ -77,7 +77,11 @@ $patternsRe = [regex]::new(($patterns -join '|'), 'None')
 # `-token` and `--db-pass`, and refuses the dash inside `two-pass` or
 # `x-secret`, whose next word is prose (F188). Without the dash the label needs
 # `=` or `:`, exactly as bin/secrets-redact decides it.
-$Label = '(?<dash>(?<=(?:^|[\s"''])(?:-[^\s"'']*)?)--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
+# `(?=-)` before the lookbehind: the group opens with a dash anyway, and without
+# the guard the lookbehind ran at every position, scanning back to the start of
+# the line. $CredBlock backtracks its leading run through every position, so a
+# 200 KB line took minutes (F219).
+$Label = '(?<dash>(?=-)(?<=(?:^|[\s"''])(?:-[^\s"'']*)?)--?)?(pass|passwd|password|pass-phrase|passphrase|token|secret|' +
          'api[-_]?key|apikey|auth[-_]?token|access[-_]?key|subs?cription[-_]?key|' +
          'client[-_]?secret|client[-_]?key[-_]?data|private[-_]?key|credential|authorization|' +
          # SQL says it in two words: CREATE USER … IDENTIFIED BY '…', the same
@@ -377,7 +381,10 @@ function Edit-Near([string]$Text) {
             # lower case, upper case and a digit, as in bin/secrets-redact.
             $mixed = if ($v.Length -ge 16) { $v -match '[A-Za-z]' } else { $v -cmatch '[a-z]' -and $v -cmatch '[A-Z]' }
             if ($mixed -and $v -match '[0-9]' -and
-                -not $LabelAny.IsMatch($v) -and -not (Test-Name $v) -and -not (Test-Mask $v)) {
+                -not $LabelAny.IsMatch($v) -and -not (Test-Name $v) -and -not (Test-Mask $v) -and
+                # A lower-case UUID far from the label is an id, not a key (F215);
+                # right after a label it is still masked, as in bin/secrets-redact.
+                $v -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') {
                 $script:Hits++; '"' + (Get-Mask $v) + '"'
             } else { $m.Value }
         })
