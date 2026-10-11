@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.20 — 2026-10-11
+
+### Fixed
+
+- **A GitHub advisory id is not masked (F256).** `GHSA-c9hw-wf7x-jp9j` has
+  upper-case letters, lower-case letters and digits, so a line holding only that
+  id was masked as a password. `jq -r '.[].id'` prints ids that way. An id of
+  `GHSA` and three groups of four from the advisory alphabet
+  `23456789cfghjmpqrvwx` now stays. A value outside that alphabet is still
+  masked. Both ports.
+
 ## 0.13.19 — 2026-10-10
 
 ### Fixed

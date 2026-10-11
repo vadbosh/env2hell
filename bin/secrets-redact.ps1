@@ -173,6 +173,9 @@ $NameShapes = @(
     # A placeholder in angle brackets: words with a space, or one lower-case or
     # one upper-case word. Same rule and reason as is_name() in the POSIX file.
     '^<([A-Za-z0-9_.:-]* [A-Za-z0-9 _.:-]*|[a-z]+([_-][a-z]+)*|[A-Z]+(_[A-Z]+)*)>$'  # <your-token>
+    # A GitHub advisory id, public. Same rule and reason as is_name() in the
+    # POSIX file.
+    '^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$'  # GHSA-c9hw-wf7x-jp9j
 )
 
 function Test-Name([string]$Value) {

@@ -371,6 +371,12 @@ check_shape keep 'api_key: "<YOUR_API_KEY>"'                      'an upper-case
 check_shape mask "password=\"<Xy7${BEARER}>\""                    'a mixed-case password in angle brackets'
 check_shape mask "token: \"<${BEARER}Q>\""                        'a generated token in angle brackets'
 
+# A GitHub advisory id has upper, lower and digits. Before 0.13.20 the bare-line
+# rule masked it when jq -r printed it alone on its line.
+check_shape keep 'GHSA-c9hw-wf7x-jp9j'                            'a GHSA id alone on its line'
+check_shape keep '  "GHSA-8qq5-rm4j-mr97",'                       'a GHSA id in a JSON array'
+check_shape mask 'GHSA-Xy7Q-k9Zr-m2Pw'                            'a GHSA-prefixed value outside the advisory alphabet'
+
 got="$(hook_out "\"Authorization\": \"Bearer $BEARER\"")"
 if grep -qF -- '"Authorization": "Bearer <REDACTED:' <<< "$got"; then
     ok "keeps the scheme word readable inside JSON quotes"
