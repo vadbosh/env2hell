@@ -100,7 +100,7 @@ keep the tier from eating half the environment:
 - a **network address**: the name ends in `_HOST`, `_HOSTNAME`, `_SERVER`,
   `_ENDPOINT`, `_ADDR`, `_ADDRESS`, `_URI` or `_URL`, and the value is a bare
   hostname or `http(s)://…`. Credentials inside a URL are caught by tier 1
-  first, so `DB_URL=postgres://user:password@host` stays masked.
+  first, so `DB_URL=postgres://user:пароль@host` stays masked.
 
 Both exemptions are checked from both sides — the name **and** the shape of the
 value. `COMMIT_TOKEN` holding forty non-hex characters is still masked.
