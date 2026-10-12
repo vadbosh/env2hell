@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.21 — 2026-10-12
+
+### Fixed
+
+- **A PGP public key is not masked (F286).** The armor lines of a public key
+  are base64 with upper case, lower case and digits, so a line without a `/`
+  was masked as a password. An apt source in deb822 form, with the key inline
+  after `Signed-By:`, came back with 24 lines masked and a demand to rotate a
+  key that is published. Inside a `BEGIN PGP PUBLIC KEY BLOCK` armor lines are
+  now exempt from the bare-line rule: the header may end a line, and a line
+  may be indented or carry a `cat -n` prefix. The block ends at its footer or
+  at the first line that is not armor, and provider shapes such as `AKIA…` are
+  still masked inside it. A private key block is unchanged. Both ports; six
+  new cases.
+
 ## 0.13.20 — 2026-10-11
 
 ### Fixed

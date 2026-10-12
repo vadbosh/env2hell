@@ -348,9 +348,39 @@ $BareLine = [regex]::new(
     '(?<val>[A-Za-z0-9!@#$%^&*()_+=?~.,;:-]{8,128})(?<tail>[ \t\r]*)$',
     'Multiline')
 
+# The armor lines of a PGP public key are base64, the shape above when a line
+# has no `/`, and the key is published, not secret (F286): an apt source in
+# deb822 form came back with 24 lines masked. Same rule as the inpub block in
+# bin/secrets-redact: the header may end a line, deb822 writes an empty line as
+# ` .`, armor lines are exempt from this rule only, and the block ends at its
+# footer or at the first line that is neither armor nor an armor header.
+$PubBegin  = [regex]::new('-----BEGIN PGP PUBLIC KEY BLOCK-----[ \t\r]*$')
+$PubEnd    = [regex]::new('^[ \t]*(?:[0-9]+[\t:][ \t]*)?-----END PGP PUBLIC KEY BLOCK-----[ \t\r]*$')
+$PubArmor  = [regex]::new('^[ \t]*(?:[0-9]+[\t:][ \t]*)?(?:[A-Za-z0-9+/]+=*|=[A-Za-z0-9+/]{4}|\.)?[ \t\r]*$')
+$PubHeader = [regex]::new('^[ \t]*(?:[0-9]+[\t:][ \t]*)?[A-Za-z][A-Za-z-]*: ')
+
+# Offsets of the armor lines in $Text: where a $BareLine match starts.
+function Get-ArmorStarts([string]$Text) {
+    $starts = [System.Collections.Generic.HashSet[int]]::new()
+    if ($Text.IndexOf('-----BEGIN PGP PUBLIC KEY BLOCK-----') -lt 0) { return ,$starts }
+    $in = $false; $pos = 0
+    foreach ($line in $Text.Split([char]10)) {
+        if ($in) {
+            if ($PubEnd.IsMatch($line)) { $in = $false }
+            elseif ($PubArmor.IsMatch($line)) { [void]$starts.Add($pos) }
+            elseif (-not $PubHeader.IsMatch($line)) { $in = $false }
+        }
+        if ($PubBegin.IsMatch($line)) { $in = $true }
+        $pos += $line.Length + 1
+    }
+    return ,$starts
+}
+
 function Edit-Bare([string]$Text) {
+    $script:ArmorStarts = Get-ArmorStarts $Text
     return $BareLine.Replace($Text, {
         param($m)
+        if ($script:ArmorStarts.Contains($m.Index)) { return $m.Value }
         $v = $m.Groups['val'].Value
         $keep = ($v -cnotmatch '[a-z]') -or ($v -cnotmatch '[A-Z]') -or ($v -notmatch '[0-9]') -or
             ($v -match '^[-#~.]') -or ($v -cmatch '^[0-9a-f]+$') -or ($v -match '^[0-9.:,-]+$') -or

@@ -189,6 +189,13 @@ prints it. A backup name with its timestamp, such as
 letters and digits only, is not caught. That shape is every hash and every
 generated id.
 
+A PGP public key is an exception: the key is published, not secret. Its armor
+lines are base64 with all three classes, so a line without a `/` has the shape
+of a password. Inside a `BEGIN PGP PUBLIC KEY BLOCK` these lines stay readable,
+even when the header ends a line, as after `Signed-By:` in an apt source. The
+block ends at its footer or at the first line that is not armor. Provider
+shapes such as `AKIA…` are still masked inside it.
+
 A key named only `key`, or one ending in it with no label before, such as
 `licenseKey`, is not a label. Every Kubernetes selector prints
 `key: app.kubernetes.io/name`. Here the value decides, and it is masked in two

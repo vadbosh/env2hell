@@ -442,6 +442,47 @@ else
 $(printf '%s\n' "$prose" | sed 's/^/        /')"
 fi
 
+# A PGP *public* key is published, not secret, and its armor lines are base64:
+# upper, lower and digits, so a line without a `/` in it is the bare-line
+# shape. Before 0.13.21 an apt source in deb822 form — the key inline after
+# `Signed-By:`, each line indented by one space — came back with 24 lines
+# masked and a demand to rotate a key that was never secret (F286). Inside the
+# block only armor lines are exempt, only from the bare-line rule, and the
+# block ends at its footer or at the first line that is not armor.
+check_text () {                         # <mask|keep> <what it is> <line>...
+    only "$@" || return 0
+    local want="$1" what="$2" got
+    shift 2
+    if printf '%s\n' "$@" | run_tool --filter >/dev/null 2>&1; then got=mask; else got=keep; fi
+    if [ "$got" = "$want" ]; then
+        ok "$want: $what"
+    else
+        no "$want: $what" "got $got"
+    fi
+}
+
+ARMOR="Ab3$(printf 'Cd5%.0s' {1..20})e"           # 64 characters, no `/`
+check_shape mask "$ARMOR"                                         'the same armor line outside a key block'
+check_text keep 'a PGP public key inline in a deb822 apt source' \
+    'Types: deb' \
+    'Signed-By: -----BEGIN PGP PUBLIC KEY BLOCK-----' \
+    ' .' " $ARMOR" " $ARMOR" " ${ARMOR:0:40}" ' =kFlZ' \
+    ' -----END PGP PUBLIC KEY BLOCK-----'
+check_text keep 'an armored PGP public key with a header, under cat -n' \
+    '     1	-----BEGIN PGP PUBLIC KEY BLOCK-----' \
+    '     2	Comment: Launchpad PPA' \
+    '     3	' "     4	$ARMOR" "     5	$ARMOR" '     6	=kFlZ' \
+    '     7	-----END PGP PUBLIC KEY BLOCK-----'
+check_text mask 'a password after the footer of a public key' \
+    '-----BEGIN PGP PUBLIC KEY BLOCK-----' '' "$ARMOR" \
+    '-----END PGP PUBLIC KEY BLOCK-----' "$ARMOR"
+check_text mask 'a password after a truncated public key and a line of prose' \
+    '-----BEGIN PGP PUBLIC KEY BLOCK-----' '' "$ARMOR" \
+    'the listing was cut here' "$ARMOR"
+check_text mask 'a provider token inside a public key block' \
+    '-----BEGIN PGP PUBLIC KEY BLOCK-----' '' "AKIA$(printf 'Q%.0s' {1..16})" \
+    '-----END PGP PUBLIC KEY BLOCK-----'
+
 # A credential block in YAML: the label is on the parent line, and the values
 # under it are keyed by user names. Measured 2026-10-05: a Hysteria2
 # config.yaml printed over ssh put three passwords into a transcript, every line
