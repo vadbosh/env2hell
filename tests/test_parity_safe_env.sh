@@ -54,7 +54,6 @@ PARITY_OPENAI=sk-abcdefghijklmnopqrstuvwx
 PARITY_OPENROUTER=sk-or-v1-abcdefghijklmnopqrstuvwx
 PARITY_ATLASSIAN=ATATTxyz1234567890abcdefghijklmno
 PARITY_JWT=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig
-PARITY_URLPW=postgres://user:hunter2000@db.example:5432/app
 PARITY_URLNOPW=postgres://user@db.example:5432/app
 PARITY_HEX32=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
 PARITY_HEX40=5100e79bf6fba1dafa048c0ffee1234567890abcd
@@ -98,9 +97,14 @@ PAIRS
 # The other provider rows survived the same scan. If one is rejected later,
 # move it here too rather than weakening the sample: the point of the row is
 # that the value matches the pattern in docs/patterns.md.
-printf 'PARITY_STRIPE=%s_%s_%s\n' sk live abcdefghijklmnopqrstuvwx >> "$tmp/pairs.txt"
-# Telegram bot token, split the same way: GitHub secret scanning knows its shape.
-printf 'PARITY_TELEGRAM=%s:%s%s\n' 1234567890 AA abcdefghijklmnopqrstuvwxyzABCDEFG >> "$tmp/pairs.txt"
+{
+    printf 'PARITY_STRIPE=%s_%s_%s\n' sk live abcdefghijklmnopqrstuvwx
+    # Telegram bot token, split the same way: GitHub secret scanning knows its shape.
+    printf 'PARITY_TELEGRAM=%s:%s%s\n' 1234567890 AA abcdefghijklmnopqrstuvwxyzABCDEFG
+    # A database URL with a password in it, split the same way: TruffleHog's
+    # Postgres detector flags the literal in the table (F290).
+    printf 'PARITY_URLPW=%s://%s:%s@%s\n' postgres user Xy7passQ9z db.example:5432/app
+} >> "$tmp/pairs.txt"
 
 # ── POSIX side: one process, the whole table planted with env -i ────────────
 mapfile -t args < "$tmp/pairs.txt"
