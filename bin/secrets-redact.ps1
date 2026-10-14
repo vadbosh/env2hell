@@ -176,6 +176,9 @@ $NameShapes = @(
     # A GitHub advisory id, public. Same rule and reason as is_name() in the
     # POSIX file.
     '^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$'  # GHSA-c9hw-wf7x-jp9j
+    # A Claude Code project directory in lower case. Same rule and reason as
+    # is_name() in the POSIX file.
+    '^-[a-z][a-z0-9_]*(-+[a-z0-9_]+)+$'      # -home-repos-env2hell
 )
 
 function Test-Name([string]$Value) {

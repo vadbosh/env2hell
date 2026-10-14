@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.22 — 2026-10-14
+
+### Fixed
+
+- **A Claude Code project directory is not masked (F325).** A `tokens:`
+  heading opens a credential block, because labels match in the plural too.
+  Under it, the list item `- -home-repos-env2hell` was masked as a secret. A
+  lower-case slug — the path with `/` and `.` turned into `-` — now stays. A
+  slug with upper case, such as `-tmp-tmp-3EiVqyatod`, still gets masked
+  there: it has the shape of a base64url token that starts with a hyphen.
+  Both ports.
+
 ## 0.13.21 — 2026-10-12
 
 ### Fixed

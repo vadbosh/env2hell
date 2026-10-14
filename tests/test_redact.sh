@@ -377,6 +377,13 @@ check_shape keep 'GHSA-c9hw-wf7x-jp9j'                            'a GHSA id alo
 check_shape keep '  "GHSA-8qq5-rm4j-mr97",'                       'a GHSA id in a JSON array'
 check_shape mask 'GHSA-Xy7Q-k9Zr-m2Pw'                            'a GHSA-prefixed value outside the advisory alphabet'
 
+# A Claude Code project directory listed under a `tokens:` heading is a child
+# of a credential block. Before 0.13.22 it was masked there.
+check_shape keep "$(printf 'tokens:\n  - -home-repos-env2hell\n')"          'a project slug under a tokens heading'
+check_shape keep "$(printf 'tokens:\n  - -root--claude-skills\n')"          'a slug with a dot turned into a double hyphen'
+check_shape mask "$(printf 'tokens:\n  - -tmp-tmp-3EiVqyatod\n')"           'a mixed-case slug, the shape of a token'
+check_shape mask "$(printf 'tokens:\n  - -Xy7Qk9Zr-m2PwAbCdEf\n')"          'a base64url token that starts with a hyphen'
+
 got="$(hook_out "\"Authorization\": \"Bearer $BEARER\"")"
 if grep -qF -- '"Authorization": "Bearer <REDACTED:' <<< "$got"; then
     ok "keeps the scheme word readable inside JSON quotes"
