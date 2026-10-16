@@ -384,6 +384,13 @@ check_shape keep "$(printf 'tokens:\n  - -root--claude-skills\n')"          'a s
 check_shape mask "$(printf 'tokens:\n  - -tmp-tmp-3EiVqyatod\n')"           'a mixed-case slug, the shape of a token'
 check_shape mask "$(printf 'tokens:\n  - -Xy7Qk9Zr-m2PwAbCdEf\n')"          'a base64url token that starts with a hyphen'
 
+# An Opencode id alone on its line, as `opencode session list | cut -f1` prints
+# it. Before 0.13.25 the bare-line rule masked it.
+check_shape keep 'ses_ebbc51835ffe60nLNqsTnEjwLA'                 'an Opencode session id alone on its line'
+check_shape keep 'evt_144187c4d001e2MVvUyJwgOcPB'                 'an Opencode event id'
+check_shape mask 'ses_Xy7Qk9ZrM2PwAbCdEfGhIjKlMn'                 'an id-prefixed value without the hex time part'
+check_shape mask 'abc_ebbc51835ffe60nLNqsTnEjwLA'                 'the same shape behind an unknown prefix'
+
 got="$(hook_out "\"Authorization\": \"Bearer $BEARER\"")"
 if grep -qF -- '"Authorization": "Bearer <REDACTED:' <<< "$got"; then
     ok "keeps the scheme word readable inside JSON quotes"

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.25 — 2026-10-16
+
+### Fixed
+
+- **An Opencode id is not masked (F352).** `opencode session list | cut -f1`
+  prints an id such as `ses_ebbc51835ffe60nLNqsTnEjwLA` alone on its line. It
+  has upper case, lower case and digits, so the bare-line rule masked it. An id
+  now stays when it is one of the prefixes seen in the Opencode log (`ses`,
+  `msg`, `evt`, `per`, `que`, `tool`), then `_`, 12 hex digits and 14
+  base62 characters. Both ports.
+
 ## 0.13.24 — 2026-10-16
 
 ### Fixed

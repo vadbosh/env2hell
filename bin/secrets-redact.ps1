@@ -179,6 +179,8 @@ $NameShapes = @(
     # A Claude Code project directory in lower case. Same rule and reason as
     # is_name() in the POSIX file.
     '^-[a-z][a-z0-9_]*(-+[a-z0-9_]+)+$'      # -home-repos-env2hell
+    # An Opencode id. Same rule and reason as is_name() in the POSIX file.
+    '^(ses|msg|evt|per|que|tool)_[0-9a-f]{12}[0-9A-Za-z]{14}$'  # ses_ebbc51835ffe60nLNqsTnEjwLA
 )
 
 function Test-Name([string]$Value) {
