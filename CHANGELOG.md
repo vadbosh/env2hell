@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.13.23 — 2026-10-16
+
+### Fixed
+
+- **The Opencode plugins load in Opencode 2.x.** The 2.x loader accepts only a
+  default export with `setup()`. With the old `export const X: Plugin` alone it
+  fails with `Plugin must export a default definition`, so `secrets-guard.ts`
+  and `secrets-redact.ts` were dead there. Both now export a default object
+  with `setup()` for 2.x and keep `server()` for 1.x. In 2.x the shell tool is
+  `shell` and `read` takes `path`. The plugins check both these names and the
+  1.x names.
+- **A file attached with `@` is masked in Opencode 2.x (F344).** 2.x reads the
+  attachment in the server, so no tool hook sees it, and the `prompt` hook runs
+  before the file is read. The plugin now masks the attachment in the session
+  `context`, `compaction` and `generate` hooks, in the messages sent to the
+  model. A part with `metadata.attachment` is masked whole. In a
+  `<file name="…">…</file>` block inside the user's text, as
+  `opencode run -f` sends it, only the block content is masked. Checked on
+  2.0.30 with the request body captured before it was sent. The `@` path of
+  the TUI was not checked.
+- **The test that the Opencode plugin delegates to the CLI accepts the 2.x
+  form (F347).** It looked for `secrets-redact --filter` and failed on
+  `spawn(bin, ["--filter"])`.
+
 ## 0.13.22 — 2026-10-14
 
 ### Fixed

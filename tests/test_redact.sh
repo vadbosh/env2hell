@@ -1268,7 +1268,9 @@ if [ -f "$PLUGIN" ]; then
     # not carry ~/.local/bin on PATH — so match the `--filter` call itself
     # rather than the literal command name. What this asserts is unchanged:
     # the plugin delegates instead of carrying its own copy of the policy.
-    if grep -qE '(secrets-redact|\$\{redact\}) --filter' "$PLUGIN"; then
+    # Three spellings: a shell string, a `${redact}` template, and the argv
+    # array of spawn(bin, ["--filter"]) that the 2.x port uses.
+    if grep -qE '(secrets-redact|\$\{redact\}) --filter|spawn\([a-zA-Z_]+, *\["--filter"\]' "$PLUGIN"; then
         ok "the Opencode plugin delegates to the CLI with --filter"
     else
         no "the Opencode plugin delegates to the CLI" \
