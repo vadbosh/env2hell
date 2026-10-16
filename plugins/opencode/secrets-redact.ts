@@ -22,9 +22,11 @@ import type { Plugin } from "@opencode-ai/plugin"
 //
 // Dual-shape, like rtk.ts: OpenCode 2.x calls setup() and the result is
 // `event.result` ({content[], output, metadata}); 1.x calls server() and the
-// result is `output.output` / `output.metadata`. Among tools only the shell is
-// covered (`shell` in 2.x, `bash` in 1.x), matching the Claude Code hook's
-// `Bash` matcher and the guard.
+// result is `output.output` / `output.metadata`. The tools covered are the
+// shell (`shell` in 2.x, `bash` in 1.x), `read` and `grep`, matching the Claude
+// Code hook's `Bash|Read|Grep` matcher. Shell only was a gap: on 2.0.30 a model
+// asked about a file outside the project read it with `read`, and the value
+// reached it whole (F348).
 //
 // A file attached to a prompt with `@` is masked too. 1.x hands it over as a
 // synthetic part in chat.message. 2.x reads it in the server itself
@@ -57,7 +59,7 @@ function mask(bin: string, text: unknown, timeout = 10000): Promise<string | und
   })
 }
 
-const isShell = (tool: unknown) => ["bash", "shell"].includes(String(tool ?? "").toLowerCase())
+const isCovered = (tool: unknown) => ["bash", "shell", "read", "grep"].includes(String(tool ?? "").toLowerCase())
 
 function resolveBin(): string | null {
   const bin = findBin("secrets-redact")
@@ -83,7 +85,7 @@ export const SecretsRedactPlugin: Plugin = async () => {
     },
 
     "tool.execute.after": async (input: any, output: any) => {
-      if (!isShell(input?.tool)) return
+      if (!isCovered(input?.tool)) return
       const masked = await mask(bin, output?.output)
       if (masked !== undefined) output.output = masked
 
@@ -147,7 +149,7 @@ export default {
     for (const kind of ["context", "compaction", "generate"]) await ctx.session?.hook?.(kind, maskAttachments)
 
     await ctx.tool.hook("execute.after", async (e: any) => {
-      if (!isShell(e?.tool) || e?.status !== "completed" || !e?.result) return
+      if (!isCovered(e?.tool) || e?.status !== "completed" || !e?.result) return
       const result = e.result
       const next: any = { ...result }
 

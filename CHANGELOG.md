@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.24 — 2026-10-16
+
+### Fixed
+
+- **The Opencode plugin masks `read` and `grep` output, not only the shell
+  (F348).** The Claude Code hook covers `Bash|Read|Grep`, the Opencode plugin
+  only `shell`/`bash`. On 2.0.30 a model asked about a file outside the project
+  read it with `read`, and the value reached it whole. The plugin now covers
+  the same three tools in both 1.x and 2.x.
+
 ## 0.13.23 — 2026-10-16
 
 ### Fixed
